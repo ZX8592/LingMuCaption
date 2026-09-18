@@ -1,0 +1,403 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="SubtitleMaster.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:models="using:SubtitleMaster.Models"
+    xmlns:vm="using:SubtitleMaster.ViewModels"
+    mc:Ignorable="d">
+
+    <Grid>
+        <!-- Scrollable Settings Layout (Windows 11 Fluent) -->
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel HorizontalAlignment="Stretch" Margin="24,6,24,36" Spacing="20">
+                <!-- Hidden placeholder for binding compatibility -->
+                <TextBlock x:Name="SettingsHeaderBlock" Visibility="Collapsed" />
+
+                <!-- SECTION 1: CLI Availability & Models -->
+                <Border CornerRadius="8"
+                        Padding="20"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1">
+                    <StackPanel Spacing="16">
+                        <TextBlock x:Name="CliSectionTitleBlock" Text="1. Antigravity CLI &amp; Model" FontSize="16" FontWeight="SemiBold" />
+
+                        <!-- Status Banner -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                <Ellipse x:Name="CliStatusDot" Width="10" Height="10" Fill="#107C41" VerticalAlignment="Center" />
+                                <TextBlock x:Name="CliStatusMessageBlock" Text="CLI Ready" FontSize="14" FontWeight="Medium" VerticalAlignment="Center" />
+                            </StackPanel>
+
+                            <Button Grid.Column="1" x:Name="RefreshCliBtn" Click="OnRefreshCliClicked">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE72C;" FontSize="14" />
+                                    <TextBlock x:Name="RefreshCliLabel" Text="Check CLI" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+
+                        <!-- CLI Path -->
+                        <StackPanel Spacing="6">
+                            <TextBlock x:Name="CliPathLabelBlock" Text="CLI Executable Path:" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBox x:Name="CliPathBox" TextChanged="OnCliPathChanged" PlaceholderText="antigravity.exe" />
+                                <Button x:Name="BrowseCliBtn" Grid.Column="1" Margin="8,0,0,0" Content="浏览..." Click="OnBrowseCliClicked" />
+                            </Grid>
+                        </StackPanel>
+
+                        <!-- Separated AI Model & Thinking Intensity Grid -->
+                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto">
+                            <!-- AI Base Model -->
+                            <StackPanel Grid.Column="0" Margin="0,0,10,0" Spacing="6">
+                                <TextBlock x:Name="ModelLabelBlock" Text="AI Base Model:" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <ComboBox x:Name="ModelComboBox" SelectionChanged="OnModelSelectionChanged" HorizontalAlignment="Stretch" />
+                            </StackPanel>
+
+                            <!-- Thinking Intensity -->
+                            <StackPanel Grid.Column="1" Margin="10,0,0,0" Spacing="6">
+                                <TextBlock x:Name="ThinkingIntensityLabelBlock" Text="Thinking Intensity:" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <ComboBox x:Name="ThinkingIntensityComboBox" SelectionChanged="OnThinkingIntensityChanged" HorizontalAlignment="Stretch" />
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- SECTION 2: Output & Subtitle Options -->
+                <Border CornerRadius="8"
+                        Padding="20"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1">
+                    <StackPanel Spacing="18">
+                        <TextBlock x:Name="OutputSectionTitleBlock" Text="2. Output &amp; Subtitle Options" FontSize="16" FontWeight="SemiBold" />
+
+                        <!-- Output Mode -->
+                        <StackPanel Spacing="8">
+                            <TextBlock x:Name="OutputModeLabelBlock" Text="Output Mode:" FontSize="13" FontWeight="Medium" />
+                            <RadioButton x:Name="ModeHardsubRadio" Content="Hardsub Video (Burn-in, universal compatibility - Recommended)" GroupName="OutputModeGroup" Checked="OnOutputModeChecked" />
+                            <RadioButton x:Name="ModeSoftsubRadio" Content="Softsub Video (Embedded track, instant &amp; lossless)" GroupName="OutputModeGroup" Checked="OnOutputModeChecked" />
+                            <RadioButton x:Name="ModeSubtitleOnlyRadio" Content="Subtitle Files Only (.srt &amp; .ass)" GroupName="OutputModeGroup" Checked="OnOutputModeChecked" />
+                        </StackPanel>
+
+                        <!-- Segmentation Style -->
+                        <StackPanel Spacing="8">
+                            <TextBlock x:Name="SegmentationStyleLabelBlock" Text="Segmentation Style:" FontSize="13" FontWeight="Medium" />
+                            <RadioButton x:Name="SegDenseShortRadio" Content="Dense / Short sentences (Default, recommended for speeches/vlogs)" GroupName="SegStyleGroup" Checked="OnSegStyleChecked" />
+                            <RadioButton x:Name="SegSparseLongRadio" Content="Sparse / Long sentences (Continuous full sentences)" GroupName="SegStyleGroup" Checked="OnSegStyleChecked" />
+                        </StackPanel>
+
+                        <!-- Translation Style Preference -->
+                        <StackPanel Spacing="8">
+                            <TextBlock x:Name="TransStyleLabelBlock" Text="Translation Style:" FontSize="13" FontWeight="Medium" />
+                            <RadioButton x:Name="StyleLiteralRadio" Content="Literal (Faithful to syntax &amp; terms)" GroupName="TransStyleGroup" Checked="OnStyleChecked" />
+                            <RadioButton x:Name="StyleBalancedRadio" Content="Balanced (Natural &amp; accurate)" GroupName="TransStyleGroup" Checked="OnStyleChecked" />
+                            <RadioButton x:Name="StyleFreeRadio" Content="Free / Localized (Idiomatic subtitle phrasing)" GroupName="TransStyleGroup" Checked="OnStyleChecked" />
+                        </StackPanel>
+
+                        <!-- Smart Web Search Intensity (3 Levels) -->
+                        <StackPanel Spacing="8">
+                            <TextBlock x:Name="WebSearchModeLabelBlock" Text="Web Search Intensity:" FontSize="13" FontWeight="Medium" />
+                            <RadioButton x:Name="WebSearchAccurateRadio" Content="Accurate (Deep verification of proper nouns &amp; terms - Default)" GroupName="WebSearchGroup" Checked="OnWebSearchModeChecked" />
+                            <RadioButton x:Name="WebSearchFastRadio" Content="Fast (Only search critical entities, reduce intensity &amp; time)" GroupName="WebSearchGroup" Checked="OnWebSearchModeChecked" />
+                            <RadioButton x:Name="WebSearchOffRadio" Content="Off (Context-based only, no web searches)" GroupName="WebSearchGroup" Checked="OnWebSearchModeChecked" />
+                        </StackPanel>
+
+                        <!-- Secondary Subtitle (Bilingual) -->
+                        <ToggleSwitch x:Name="SecondarySubSwitch"
+                                      Header="Enable Secondary Subtitle (Original recognized speech as secondary line):"
+                                      Toggled="OnSecondarySubToggled" />
+
+                        <!-- Target Language -->
+                        <StackPanel Spacing="6">
+                            <TextBlock x:Name="TargetLangLabelBlock" Text="Target Subtitle Language:" FontSize="13" FontWeight="Medium" />
+                            <ComboBox x:Name="TargetLangComboBox" SelectionChanged="OnTargetLangChanged" MinWidth="220" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- SECTION 3: Style Designer & Live Preview -->
+                <Border CornerRadius="8"
+                        Padding="20"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1">
+                    <StackPanel Spacing="18">
+                        <TextBlock x:Name="EffectSectionTitleBlock" Text="3. Subtitle Style Designer &amp; Live Preview" FontSize="16" FontWeight="SemiBold" />
+
+                        <!-- Live Preview Display -->
+                        <StackPanel Spacing="8">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock x:Name="PreviewTitleBlock" Text="Live Subtitle Preview" FontSize="13" FontWeight="Medium" VerticalAlignment="Center" />
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                    <Button x:Name="PlayAnimationBtn" Click="OnPlayAnimationClicked" Style="{ThemeResource SubtleButtonStyle}">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <FontIcon Glyph="&#xE768;" FontSize="12" />
+                                            <TextBlock x:Name="PlayAnimationLabel" Text="播放动效" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button x:Name="FullscreenPreviewBtn" Click="OnFullscreenPreviewClicked" Style="{ThemeResource SubtleButtonStyle}" ToolTipService.ToolTip="全屏预览">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <FontIcon Glyph="&#xE740;" FontSize="12" />
+                                            <TextBlock x:Name="FullscreenPreviewLabel" Text="全屏预览" />
+                                        </StackPanel>
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- Embedded preview keeps subtitle effects at their maximized-video visual size -->
+                            <Border x:Name="PreviewBorder" CornerRadius="10" Height="340" Background="#080B12" BorderBrush="#2D3748" BorderThickness="1"
+                                    PointerPressed="OnPreviewCanvasPointerPressed" ToolTipService.ToolTip="全屏预览">
+                                <Grid x:Name="PreviewCanvasGrid">
+                                        <!-- Cinematic Backdrop Gradient with Video-like Contrast -->
+                                        <Rectangle>
+                                            <Rectangle.Fill>
+                                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                    <GradientStop Color="#1A2436" Offset="0.0" />
+                                                    <GradientStop Color="#2C3B52" Offset="0.4" />
+                                                    <GradientStop Color="#1E2838" Offset="0.75" />
+                                                    <GradientStop Color="#101724" Offset="1.0" />
+                                                </LinearGradientBrush>
+                                            </Rectangle.Fill>
+                                        </Rectangle>
+
+                                        <!-- Exact subtitle pixels rendered by the same FFmpeg/libass path as export. -->
+                                        <Image x:Name="PreviewAssImage"
+                                               Visibility="Collapsed"
+                                               Stretch="Fill"
+                                               IsHitTestVisible="False" />
+
+                                        <!-- Subtitle Presentation Container -->
+                                        <StackPanel x:Name="PreviewSubtitleContainer"
+                                                    VerticalAlignment="Bottom"
+                                                    HorizontalAlignment="Center"
+                                                    Margin="0,0,0,45"
+                                                    Spacing="0">
+                                            <!-- Primary Target Subtitle -->
+                                            <Grid x:Name="PreviewMainGrid" HorizontalAlignment="Center">
+                                                <TextBlock x:Name="PreviewMainTextBlock"
+                                                           Text="这是生成的主字幕的效果测试"
+                                                           FontSize="54"
+                                                           FontWeight="Bold"
+                                                           HorizontalAlignment="Center"
+                                                           TextAlignment="Center"
+                                                           Foreground="#FFFFFF" />
+                                            </Grid>
+
+                                            <!-- Secondary Source Subtitle -->
+                                            <Grid x:Name="PreviewSubGrid" HorizontalAlignment="Center">
+                                                <TextBlock x:Name="PreviewSubTextBlock"
+                                                           Text="This is the original recognized secondary subtitle"
+                                                           FontSize="37"
+                                                           FontWeight="Bold"
+                                                           HorizontalAlignment="Center"
+                                                           TextAlignment="Center"
+                                                           Foreground="#FFD700" />
+                                            </Grid>
+                                        </StackPanel>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+
+                        <!-- Style Parameters Grid -->
+                        <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnDefinitions="*,*">
+                            <!-- Row 0: Font Family & Font Size -->
+                            <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,12,12" Spacing="6">
+                                <TextBlock x:Name="FontLabelBlock" Text="Font Family (All Installed System Fonts):" FontSize="13" />
+                                <ComboBox x:Name="FontFamilyComboBox" SelectionChanged="OnFontChanged" HorizontalAlignment="Stretch" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="0" Grid.Column="1" Margin="12,0,0,12" Spacing="6">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock x:Name="FontSizeLabelBlock" Text="Font Size:" FontSize="13" />
+                                    <TextBlock Grid.Column="1" x:Name="FontSizeValBlock" Text="54 px" FontSize="13" FontWeight="SemiBold" />
+                                </Grid>
+                                <Slider x:Name="FontSizeSlider" Minimum="24" Maximum="96" Value="54" StepFrequency="1" ValueChanged="OnFontSizeChanged" />
+                            </StackPanel>
+
+                            <!-- Row 1: Primary Color & Secondary Color -->
+                            <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,12,12" Spacing="6">
+                                <TextBlock x:Name="PrimaryColorLabelBlock" Text="Primary Color (Hex):" FontSize="13" />
+                                <TextBox x:Name="PrimaryColorBox" Text="#FFFFFF" TextChanged="OnPrimaryColorChanged" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="1" Grid.Column="1" Margin="12,0,0,12" Spacing="6">
+                                <TextBlock x:Name="SecondaryColorLabelBlock" Text="Secondary Color (Hex):" FontSize="13" />
+                                <TextBox x:Name="SecondaryColorBox" Text="#FFD700" TextChanged="OnSecondaryColorChanged" />
+                            </StackPanel>
+
+                            <!-- Row 2: Font Style & Alignment -->
+                            <StackPanel Grid.Row="2" Grid.Column="0" Margin="0,0,12,12" Spacing="6">
+                                <TextBlock x:Name="FontStyleLabelBlock" Text="Font Style:" FontSize="13" />
+                                <StackPanel Orientation="Horizontal" Spacing="16" Margin="0,4,0,0">
+                                    <CheckBox x:Name="BoldCheckBox" Content="Bold" Checked="OnStyleOptionChanged" Unchecked="OnStyleOptionChanged" />
+                                    <CheckBox x:Name="ItalicCheckBox" Content="Italic" Checked="OnStyleOptionChanged" Unchecked="OnStyleOptionChanged" />
+                                </StackPanel>
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="2" Grid.Column="1" Margin="12,0,0,12" Spacing="6">
+                                <TextBlock x:Name="AlignmentLabelBlock" Text="Subtitle Alignment:" FontSize="13" />
+                                <ComboBox x:Name="AlignmentComboBox" SelectionChanged="OnAlignmentChanged" HorizontalAlignment="Stretch" />
+                            </StackPanel>
+
+                            <!-- Row 3: Outline Width & Outline Color -->
+                            <StackPanel Grid.Row="3" Grid.Column="0" Margin="0,0,12,12" Spacing="6">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock x:Name="OutlineWidthLabelBlock" Text="Outline Width:" FontSize="13" />
+                                    <TextBlock Grid.Column="1" x:Name="OutlineWidthValBlock" Text="2.8" FontSize="13" FontWeight="SemiBold" />
+                                </Grid>
+                                <Slider x:Name="OutlineWidthSlider" Minimum="0" Maximum="6" StepFrequency="0.2" Value="2.8" ValueChanged="OnOutlineWidthChanged" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="3" Grid.Column="1" Margin="12,0,0,12" Spacing="6">
+                                <TextBlock x:Name="OutlineColorLabelBlock" Text="Outline Color (Hex):" FontSize="13" />
+                                <TextBox x:Name="OutlineColorBox" Text="#000000" TextChanged="OnOutlineColorChanged" />
+                            </StackPanel>
+
+                            <!-- Row 4: Shadow Depth & Shadow Color -->
+                            <StackPanel Grid.Row="4" Grid.Column="0" Margin="0,0,12,12" Spacing="6">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock x:Name="ShadowDepthLabelBlock" Text="Shadow Depth:" FontSize="13" />
+                                    <TextBlock Grid.Column="1" x:Name="ShadowDepthValBlock" Text="1.5" FontSize="13" FontWeight="SemiBold" />
+                                </Grid>
+                                <Slider x:Name="ShadowDepthSlider" Minimum="0" Maximum="6" StepFrequency="0.2" Value="1.5" ValueChanged="OnShadowDepthChanged" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="4" Grid.Column="1" Margin="12,0,0,12" Spacing="6">
+                                <TextBlock x:Name="ShadowColorLabelBlock" Text="Shadow Color (Hex):" FontSize="13" />
+                                <TextBox x:Name="ShadowColorBox" Text="#66000000" TextChanged="OnShadowColorChanged" />
+                            </StackPanel>
+
+                            <!-- Row 5: Animation Preset & Animation Speed -->
+                            <StackPanel Grid.Row="5" Grid.Column="0" Margin="0,0,12,12" Spacing="6">
+                                <TextBlock x:Name="AnimationPresetLabelBlock" Text="Animation Preset:" FontSize="13" />
+                                <ComboBox x:Name="AnimationComboBox" SelectionChanged="OnAnimationChanged" HorizontalAlignment="Stretch" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="5" Grid.Column="1" Margin="12,0,0,12" Spacing="6">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock x:Name="AnimationSpeedLabelBlock" Text="Animation Speed:" FontSize="13" />
+                                    <TextBlock Grid.Column="1" x:Name="AnimationSpeedValBlock" Text="1.0x" FontSize="13" FontWeight="SemiBold" />
+                                </Grid>
+                                <Slider x:Name="AnimationSpeedSlider" Minimum="0.5" Maximum="2.5" StepFrequency="0.1" Value="1.0" ValueChanged="OnAnimationSpeedChanged" />
+                            </StackPanel>
+
+                            <!-- Row 6: Secondary Subtitle Scale & Letter Spacing -->
+                            <StackPanel Grid.Row="6" Grid.Column="0" Margin="0,0,12,12" Spacing="6">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock x:Name="SecondaryScaleLabelBlock" Text="Secondary Scale:" FontSize="13" />
+                                    <TextBlock Grid.Column="1" x:Name="SecondaryScaleValBlock" Text="70%" FontSize="13" FontWeight="SemiBold" />
+                                </Grid>
+                                <Slider x:Name="SecondaryScaleSlider" Minimum="50" Maximum="100" StepFrequency="5" Value="70" ValueChanged="OnSecondaryScaleChanged" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="6" Grid.Column="1" Margin="12,0,0,12" Spacing="6">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock x:Name="LetterSpacingLabelBlock" Text="Letter Spacing:" FontSize="13" />
+                                    <TextBlock Grid.Column="1" x:Name="LetterSpacingValBlock" Text="0.0" FontSize="13" FontWeight="SemiBold" />
+                                </Grid>
+                                <Slider x:Name="LetterSpacingSlider" Minimum="0" Maximum="10" StepFrequency="0.5" Value="0" ValueChanged="OnLetterSpacingChanged" />
+                            </StackPanel>
+
+                            <!-- Row 7: Bottom Margin (MarginV) -->
+                            <StackPanel Grid.Row="7" Grid.Column="0" Margin="0,0,12,0" Spacing="6">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock x:Name="MarginVLabelBlock" Text="Bottom Margin:" FontSize="13" />
+                                    <TextBlock Grid.Column="1" x:Name="MarginVValBlock" Text="45 px" FontSize="13" FontWeight="SemiBold" />
+                                </Grid>
+                                <Slider x:Name="MarginVSlider" Minimum="10" Maximum="120" StepFrequency="5" Value="45" ValueChanged="OnMarginVChanged" />
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Fullscreen Cinema Preview Overlay -->
+        <Grid x:Name="FullscreenOverlay"
+              Visibility="Collapsed"
+              Background="#FF04060A">
+            <!-- Letterbox area (click anywhere to close) -->
+            <Rectangle PointerPressed="OnCloseFullscreenPointerPressed">
+                <Rectangle.Fill>#04060A</Rectangle.Fill>
+            </Rectangle>
+
+            <!-- Fullscreen video canvas; subtitle rendering compensates for its Viewbox scale -->
+            <Viewbox x:Name="FullscreenSceneViewbox" Stretch="Uniform">
+                <Grid x:Name="FullscreenCanvasGrid" Width="1920" Height="1080"
+                      PointerPressed="OnCloseFullscreenPointerPressed">
+                    <Rectangle>
+                        <Rectangle.Fill>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                <GradientStop Color="#06090F" Offset="0.0" />
+                                <GradientStop Color="#182336" Offset="0.4" />
+                                <GradientStop Color="#0A0E17" Offset="1.0" />
+                            </LinearGradientBrush>
+                        </Rectangle.Fill>
+                    </Rectangle>
+
+                    <!-- Exact subtitle pixels rendered by the same FFmpeg/libass path as export. -->
+                    <Image x:Name="FsAssImage"
+                           Visibility="Collapsed"
+                           Stretch="Fill"
+                           IsHitTestVisible="False" />
+
+                    <!-- Fullscreen Subtitle Presentation Container -->
+                    <StackPanel x:Name="FsSubtitleContainer"
+                                VerticalAlignment="Bottom"
+                                HorizontalAlignment="Center"
+                                Margin="0,0,0,45"
+                                Spacing="0">
+                        <!-- Fullscreen Primary Subtitle -->
+                        <Grid x:Name="FsMainGrid" HorizontalAlignment="Center">
+                            <TextBlock x:Name="FsMainTextBlock"
+                                       Text="这是生成的主字幕的效果测试"
+                                       FontSize="54"
+                                       FontWeight="Bold"
+                                       HorizontalAlignment="Center"
+                                       TextAlignment="Center"
+                                       Foreground="#FFFFFF" />
+                        </Grid>
+
+                        <!-- Fullscreen Secondary Subtitle -->
+                        <Grid x:Name="FsSubGrid" HorizontalAlignment="Center">
+                            <TextBlock x:Name="FsSubTextBlock"
+                                       Text="This is the original recognized secondary subtitle"
+                                       FontSize="37"
+                                       FontWeight="Bold"
+                                       HorizontalAlignment="Center"
+                                       TextAlignment="Center"
+                                       Foreground="#FFD700" />
+                        </Grid>
+                    </StackPanel>
+                </Grid>
+            </Viewbox>
+
+            <!-- Top Controls in Fullscreen (Clean Minimalist: Only Action Buttons, No unwanted text) -->
+            <Grid VerticalAlignment="Top" Margin="28,20,28,0">
+                <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right">
+                    <Button Click="OnPlayAnimationClicked" Style="{ThemeResource SubtleButtonStyle}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE768;" FontSize="13" />
+                            <TextBlock Text="播放动效" />
+                        </StackPanel>
+                    </Button>
+                    <Button Click="OnCloseFullscreenClicked" Style="{ThemeResource SubtleButtonStyle}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE711;" FontSize="14" />
+                            <TextBlock x:Name="ExitFullscreenBtnText" Text="退出全屏 (Esc)" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Grid>
+    </Grid>
+</Page>

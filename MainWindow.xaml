@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Window
+    x:Class="SubtitleMaster.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:SubtitleMaster"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Title="灵幕助手"
+    mc:Ignorable="d">
+    <Window.SystemBackdrop>
+        <MicaBackdrop />
+    </Window.SystemBackdrop>
+
+    <!-- Full-window drop target -->
+    <Grid RowDefinitions="Auto,*" AllowDrop="True" DragOver="OnRootDragOver" Drop="OnRootDrop">
+        <!-- TitleBar strictly matching Tall caption buttons height (48px) -->
+        <Grid Grid.Row="0" x:Name="AppTitleBarArea" Height="48" Background="Transparent">
+            <Grid.ColumnDefinitions>
+                <!-- Col 0: Window Back / Exit Button (shown in Settings) -->
+                <ColumnDefinition Width="Auto" />
+                <!-- Col 1: Icon + App Title -->
+                <ColumnDefinition Width="Auto" />
+                <!-- Col 2: Draggable Center Region -->
+                <ColumnDefinition Width="*" />
+                <!-- Col 3: Safe space for native caption buttons (- [] X) -->
+                <ColumnDefinition x:Name="CaptionButtonsSpaceColumn" Width="144" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Col 0: Back Button (Only visible in Settings, returns to MainPage) -->
+            <Button Grid.Column="0"
+                    x:Name="WindowBackButton"
+                    Click="OnWindowBackClicked"
+                    Visibility="Collapsed"
+                    Width="32" Height="32"
+                    Margin="10,0,2,0"
+                    Padding="0"
+                    Style="{ThemeResource SubtleButtonStyle}"
+                    VerticalAlignment="Center"
+                    ToolTipService.ToolTip="返回 (Esc)">
+                <FontIcon Glyph="&#xE72B;" FontSize="14" />
+            </Button>
+
+            <!-- Col 1: App Icon and Title -->
+            <StackPanel Grid.Column="1"
+                        Orientation="Horizontal"
+                        Spacing="8"
+                        VerticalAlignment="Center"
+                        Margin="10,0,16,0">
+                <Image x:Name="TitleIcon" Width="26" Height="26" VerticalAlignment="Center">
+                    <Image.RenderTransform>
+                        <TranslateTransform Y="0" />
+                    </Image.RenderTransform>
+                </Image>
+                <TextBlock x:Name="WindowTitleBlock"
+                           Text="灵幕助手"
+                           FontSize="15"
+                           FontWeight="SemiBold"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+
+            <!-- Col 2: Draggable Spacer -->
+            <Grid Grid.Column="2" x:Name="HeaderDragSpacer" Background="Transparent" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+
+            <!-- Col 3: Reserved space for caption buttons -->
+        </Grid>
+
+        <!-- Main Content Frame -->
+        <Frame Grid.Row="1" x:Name="RootFrame" />
+    </Grid>
+</Window>

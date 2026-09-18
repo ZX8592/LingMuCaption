@@ -1,0 +1,63 @@
+# ==========================================
+# .NET / Visual Studio Build Outputs
+# ==========================================
+[Bb]in/
+[Oo]bj/
+[Pp]ublish/
+[Dd]ist/
+[Rr]elease/
+Generated\ Files/
+msbuild.log
+msbuild.err
+msbuild.wrn
+
+# ==========================================
+# Large Binaries & Packaged Executables
+# (GitHub rejects files > 100MB)
+# ==========================================
+*.exe
+*.dll
+*.pdb
+*.pri
+*.xbf
+*.msi
+*.zip
+*.7z
+*.tar.gz
+antigravity.exe
+ffmpeg.exe
+tools/
+
+# ==========================================
+# IDE & User Specific Files
+# ==========================================
+.vs/
+.vscode/
+*.user
+*.userosscache
+*.suo
+*.userprefs
+*.sln.docstates
+*.DotSettings.user
+.idea/
+
+# ==========================================
+# Logs, Temp Files & Caches
+# ==========================================
+logs/
+*.log
+*.tmp
+*.temp
+*_crash.txt
+.gemini/
+scratch/
+.tempmediaStorage/
+
+# ==========================================
+# Operating System Files
+# ==========================================
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store

@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "SubtitleMaster (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "SubtitleMaster (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

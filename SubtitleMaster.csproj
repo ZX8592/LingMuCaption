@@ -1,0 +1,74 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RootNamespace>SubtitleMaster</RootNamespace>
+    <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x86;x64;ARM64</Platforms>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString().ToLowerInvariant())</RuntimeIdentifier>
+    <PublishProfile Condition="Exists('Properties\PublishProfiles\win-$(Platform).pubxml')">win-$(Platform).pubxml</PublishProfile>
+    <UseWinUI>true</UseWinUI>
+    <WinUISDKReferences>false</WinUISDKReferences>
+    <EnableMsixTooling>false</EnableMsixTooling>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSdkBootstrapInitialize>true</WindowsAppSdkBootstrapInitialize>
+    <WindowsAppSdkUndockedRegFreeWinRTInitialize>true</WindowsAppSdkUndockedRegFreeWinRTInitialize>
+    <CsWinRTAotOptimizerEnabled>false</CsWinRTAotOptimizerEnabled>
+    <CsWinRTCcwLookupTableGeneratorEnabled>false</CsWinRTCcwLookupTableGeneratorEnabled>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <NoWarn>$(NoWarn);MVVMTK0045</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\**\*.*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Manifest Include="$(ApplicationManifest)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.7705" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260317003" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
+  </ItemGroup>
+
+  <!--
+    Defining the "HasPackageAndPublishMenuAddedByProject" property here allows the Solution
+    Explorer "Package and Publish" context menu entry to be enabled for this project even if
+    the Windows App SDK Nuget package has not yet been restored.
+  -->
+  <PropertyGroup Condition="'$(DisableHasPackageAndPublishMenuAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
+    <HasPackageAndPublishMenu>true</HasPackageAndPublishMenu>
+  </PropertyGroup>
+
+  <!-- Publish Properties -->
+  <PropertyGroup>
+    <PublishReadyToRun>False</PublishReadyToRun>
+    <PublishTrimmed>False</PublishTrimmed>
+  </PropertyGroup>
+
+  <Target Name="CopyWinUIResources" AfterTargets="Build">
+    <Copy SourceFiles="$(TargetDir)SubtitleMaster.pri" DestinationFiles="$(TargetDir)resources.pri" Condition="Exists('$(TargetDir)SubtitleMaster.pri')" SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="CopyWinUIPublishResources" AfterTargets="Publish">
+    <!-- Copy PRI file as both SubtitleMaster.pri and resources.pri -->
+    <Copy SourceFiles="$(TargetDir)SubtitleMaster.pri" DestinationFiles="$(PublishDir)resources.pri" Condition="Exists('$(TargetDir)SubtitleMaster.pri')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(TargetDir)SubtitleMaster.pri" DestinationFiles="$(PublishDir)SubtitleMaster.pri" Condition="Exists('$(TargetDir)SubtitleMaster.pri')" SkipUnchangedFiles="true" />
+    <!-- Copy all XBF files -->
+    <ItemGroup>
+      <OutputXbfFiles Include="$(TargetDir)*.xbf" />
+      <AssetFiles Include="$(TargetDir)Assets\**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(OutputXbfFiles)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(AssetFiles)" DestinationFolder="$(PublishDir)Assets\%(RecursiveDir)" SkipUnchangedFiles="true" />
+  </Target>
+</Project>
