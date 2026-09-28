@@ -20,9 +20,15 @@ public class SubtitleItem
     [JsonPropertyName("target_text")]
     public string TargetText { get; set; } = string.Empty;
 
+    [JsonPropertyName("flag")]
+    public string? Flag { get; set; }
+
     [JsonIgnore]
     public TimeSpan StartTime { get; set; }
 
     [JsonIgnore]
     public TimeSpan EndTime { get; set; }
+
+    [JsonIgnore]
+    public bool IsTopTrack { get; set; }
 }

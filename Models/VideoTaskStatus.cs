@@ -8,5 +8,6 @@ public enum VideoTaskStatus
     Formatting,
     RenderingVideo,
     Completed,
-    Failed
+    Failed,
+    Canceled
 }

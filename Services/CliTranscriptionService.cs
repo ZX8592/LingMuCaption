@@ -31,8 +31,8 @@ public class CliTranscriptionService
     {
         string resolvedPath = ResolveCliPath(cliPath);
 
-        // Fast-path: return cached result if already verified and not forcing refresh
-        if (!forceRefresh && _cachedStatus.HasValue && string.Equals(_cachedCliPath, resolvedPath, StringComparison.OrdinalIgnoreCase))
+        // Fast-path: only return cached result if it was ALREADY verified ready (IsReady == true) and not forcing refresh
+        if (!forceRefresh && _cachedStatus.HasValue && _cachedStatus.Value.IsReady && string.Equals(_cachedCliPath, resolvedPath, StringComparison.OrdinalIgnoreCase))
         {
             return _cachedStatus.Value;
         }
@@ -40,7 +40,7 @@ public class CliTranscriptionService
         await _checkCliLock.WaitAsync();
         try
         {
-            if (!forceRefresh && _cachedStatus.HasValue && string.Equals(_cachedCliPath, resolvedPath, StringComparison.OrdinalIgnoreCase))
+            if (!forceRefresh && _cachedStatus.HasValue && _cachedStatus.Value.IsReady && string.Equals(_cachedCliPath, resolvedPath, StringComparison.OrdinalIgnoreCase))
             {
                 return _cachedStatus.Value;
             }
@@ -66,23 +66,20 @@ public class CliTranscriptionService
 
                     if (testRes.ExitCode != 0)
                     {
-                        _cachedCliPath = resolvedPath;
-                        _cachedStatus = (false, "CLI returned non-zero exit code.", models);
-                        return _cachedStatus.Value;
+                        _cachedStatus = null;
+                        return (false, "CLI returned non-zero exit code.", models);
                     }
                 }
                 catch (Exception ex)
                 {
-                    _cachedCliPath = resolvedPath;
-                    _cachedStatus = (false, $"Cannot launch CLI: {ex.Message}", models);
-                    return _cachedStatus.Value;
+                    _cachedStatus = null;
+                    return (false, $"Cannot launch CLI: {ex.Message}", models);
                 }
             }
             else if (!File.Exists(resolvedPath))
             {
-                _cachedCliPath = resolvedPath;
-                _cachedStatus = (false, $"CLI executable not found at: {resolvedPath}", models);
-                return _cachedStatus.Value;
+                _cachedStatus = null;
+                return (false, $"CLI executable not found at: {resolvedPath}", models);
             }
 
             try
@@ -129,22 +126,20 @@ public class CliTranscriptionService
                     return _cachedStatus.Value;
                 }
 
-                _cachedCliPath = resolvedPath;
+                _cachedStatus = null;
                 string rawErr = $"{runRes.StandardError} {runRes.StandardOutput}";
                 string friendlyMsg = IsAuthIssue(rawErr)
                     ? "CLI 未登录，请手动双击运行 tools/antigravity.exe 完成登录后重试"
                     : $"CLI returned exit code {runRes.ExitCode}: {runRes.StandardError}";
-                _cachedStatus = (false, friendlyMsg, models);
-                return _cachedStatus.Value;
+                return (false, friendlyMsg, models);
             }
             catch (Exception ex)
             {
-                _cachedCliPath = resolvedPath;
+                _cachedStatus = null;
                 string friendlyMsg = IsAuthIssue(ex.Message)
                     ? "CLI 未登录，请手动双击运行 tools/antigravity.exe 完成登录后重试"
                     : $"Error probing CLI models: {ex.Message}";
-                _cachedStatus = (false, friendlyMsg, models);
-                return _cachedStatus.Value;
+                return (false, friendlyMsg, models);
             }
         }
         finally
@@ -165,7 +160,7 @@ public class CliTranscriptionService
         string modelName,
         string cliPath,
         TranslationStyle translationStyle = TranslationStyle.Balanced,
-        SegmentationStyle segmentationStyle = SegmentationStyle.DenseShort,
+        SegmentationStyle segmentationStyle = SegmentationStyle.Standard,
         WebSearchMode webSearchMode = WebSearchMode.Accurate,
         IProgress<double>? progress = null,
         Action<string>? onStatusUpdate = null,
@@ -190,72 +185,218 @@ public class CliTranscriptionService
                 "- Style Preference: BALANCED TRANSLATION (标准/平衡). Achieve an optimal balance between precision/terminology fidelity and conversational fluency suitable for video subtitles."
         };
 
+        int maxChars = segmentationStyle == SegmentationStyle.Shorter ? 13 : 26;
+        int maxSourceCjkChars = segmentationStyle == SegmentationStyle.Shorter ? 16 : 30;
+        int maxSourceLatinChars = segmentationStyle == SegmentationStyle.Shorter ? 38 : 70;
+
         string segInstruction = segmentationStyle switch
         {
-            SegmentationStyle.SparseLong =>
-                "- SUBTITLE SEGMENTATION: SPARSE/LONGER SENTENCES (少断句/长句连贯). Group complete grammatical clauses and full thoughts into longer coherent subtitles (12-25 characters), minimizing rapid subtitle jumping.",
+            SegmentationStyle.Shorter =>
+                "- SUBTITLE SEGMENTATION (单行上限 13 个中文字符):\n" +
+                "  * Semantic Integrity First: Prioritize complete, coherent semantic units and natural clause structures. Do NOT fragment intact grammatical sentences into isolated words or tiny phrases.\n" +
+                "  * Holistic Natural Pacing: Balance semantic coherence with acoustic naturalness. Synthesize acoustic pauses, conversational breath, speaker turns, and speech tempo to decide the most natural breaking points.\n" +
+                "  * Clean Boundaries (STRICT - NO ARTIFICIAL ELLIPSES): When a sentence is divided across subtitle entries, do NOT add artificial leading or trailing ellipses (\"...\", \"……\"), hyphens, or continuation dots at the break boundaries. Output clean, natural spoken words without unnecessary punctuation clutter.\n" +
+                "  * Dual-Track Hard Length Limit (MANDATORY SPLIT IF EITHER LINE EXCEEDS LIMIT):\n" +
+                "    - In 'target_text', Chinese characters MUST NOT exceed 13 characters (汉字字数 <= 13).\n" +
+                "    - In 'source_text', CJK characters MUST NOT exceed 16 characters, or Latin/alphabetic text MUST NOT exceed 38 characters.\n" +
+                "    - Whenever EITHER 'target_text' OR 'source_text' exceeds its respective limit, the sentence MUST be split at the most logical grammatical pause into separate subtitle entries with independent timestamps.",
             _ =>
-                "- SUBTITLE SEGMENTATION: DENSE/SHORTER SENTENCES (多断句/短句独立 - 默认). Split dialogue into short, punchy subtitles (typically 4-12 characters per subtitle) matching natural speech pauses, breathing rhythms, and conversational tempo. Do NOT combine distinct short phrases into one."
+                "- SUBTITLE SEGMENTATION: STANDARD (单行上限 26 个中文字符 - 默认推荐):\n" +
+                "  * Semantic Integrity First: Prioritize complete, coherent semantic units and natural clause structures. Do NOT fragment intact grammatical sentences into isolated words or tiny phrases.\n" +
+                "  * Holistic Natural Pacing: Balance semantic coherence with acoustic naturalness. Synthesize acoustic pauses, conversational breath, speaker turns, and speech tempo to decide the most natural breaking points.\n" +
+                "  * Clean Boundaries (STRICT - NO ARTIFICIAL ELLIPSES): When a sentence is divided across subtitle entries, do NOT add artificial leading or trailing ellipses (\"...\", \"……\"), hyphens, or continuation dots at the break boundaries. Output clean, natural spoken words without unnecessary punctuation clutter.\n" +
+                "  * Dual-Track Hard Length Limit (MANDATORY SPLIT IF EITHER LINE EXCEEDS LIMIT):\n" +
+                "    - In 'target_text', Chinese characters MUST NOT exceed 26 characters (汉字字数 <= 26).\n" +
+                "    - In 'source_text', CJK characters MUST NOT exceed 30 characters, or Latin/alphabetic text MUST NOT exceed 70 characters.\n" +
+                "    - Whenever EITHER 'target_text' OR 'source_text' exceeds its respective limit, the sentence MUST be split at the most logical grammatical pause into separate subtitle entries with independent timestamps."
         };
 
         string searchInstruction = webSearchMode switch
         {
             WebSearchMode.Accurate =>
-                "- BACKGROUND & TERMINOLOGY (ACCURATE MODE): Thoroughly verify domain terms, character lore, and proper nouns online if there is any ambiguity. Ensure high precision in terminology.",
+                "- WEB SEARCH RULES: Web search is permitted ONLY for overall background, domain knowledge, entity names, scenario comprehension, and extended song lyrics appearing in the audio. You MUST NOT search for line-by-line dialogue transcripts.",
             WebSearchMode.Fast =>
-                "- BACKGROUND & TERMINOLOGY (FAST MODE): Only perform web searches for essential, unknown core proper nouns when context is completely insufficient. Minimize search calls to maximize speed and efficiency.",
+                "- WEB SEARCH RULES (FAST): Only perform minimal web searches for essential, unknown core domain concepts or proper nouns when context is completely insufficient. Minimize search calls.",
             WebSearchMode.Off =>
-                "- BACKGROUND & TERMINOLOGY (OFFLINE MODE): Do NOT perform any web searches. Rely strictly on audio context, common sense, and internal knowledge to transcribe and translate directly.",
-            _ => "- BACKGROUND & TERMINOLOGY: Transcribe and translate accurately based on context."
+                "- WEB SEARCH RULES (OFFLINE): Do NOT perform any web searches. Rely strictly on audio context and internal knowledge.",
+            _ => "- WEB SEARCH RULES: Web search is permitted only for overall background understanding, not for dialogue transcripts."
         };
 
+        string entityRetrievalInstruction = webSearchMode == WebSearchMode.Off
+            ? "     * If the audio belongs to a known intellectual property (e.g. anime series, movie, TV series, video game, novel) or a specialized academic/technical domain: Rely strictly on your internal pre-trained knowledge base to retrieve and anchor the canonical official Chinese names (官方规范中文译名) of all main characters, factions, weapons, settings, and terminology upfront without calling web search tools.\n" +
+              "     * Homophone Glyph Memory Trap: Internal pre-trained memory frequently confuses Chinese homophone or variant characters (同音异形字). Always anchor exact standard Chinese characters upfront and maintain 100% consistency across all segments."
+            : "     * Mandatory Chinese-Query Search: Once you identify the work, IP, or domain from the audio, you MUST execute at least one `search_web` query IN CHINESE (e.g., searching the Chinese work title/topic + \"角色 / 专有名词 / 官方中文译名\") to retrieve the exact official Chinese characters into the search results.\n" +
+              "     * Homophone Glyph Memory Trap: Foreign-language searches only return source-language names without Chinese glyphs, and internal pre-trained memory frequently confuses Chinese homophone or variant characters (同音异形字). NEVER rely on internal memory to write translated person names or proper nouns—always anchor their exact Chinese characters from Chinese search results upfront and maintain 100% consistency across all segments.";
+
+        // Divide into 12-minute segments to avoid token limit cutoffs
+        var segments = new List<(TimeSpan Start, TimeSpan End)>();
+        var chunk = TimeSpan.FromMinutes(12);
+
+        if (totalDuration <= TimeSpan.Zero || totalDuration <= chunk)
+        {
+            segments.Add((TimeSpan.Zero, totalDuration > TimeSpan.Zero ? totalDuration : TimeSpan.FromHours(4)));
+        }
+        else
+        {
+            TimeSpan cur = TimeSpan.Zero;
+            while (cur < totalDuration)
+            {
+                TimeSpan next = cur + chunk;
+                if (next > totalDuration || (totalDuration - next < TimeSpan.FromMinutes(2)))
+                {
+                    next = totalDuration;
+                }
+                segments.Add((cur, next));
+                cur = next;
+            }
+        }
+
+        string seg0EndStr = TimeHelper.ToSrtTime(segments[0].End);
+        string seg0Desc = segments.Count > 1
+            ? $"Segment 1/{segments.Count}: {TimeHelper.ToSrtTime(segments[0].Start)} to {seg0EndStr}"
+            : "Full Audio";
+
+        string seg0BoundaryRule = segments.Count > 1
+            ? $@"   - SEGMENT BOUNDARY RULE (SOFT BOUNDARY COMPLETION):
+     * Transcribe up to approximately {seg0EndStr}. If {seg0EndStr} falls in the middle of an ongoing spoken sentence, you MUST finish transcribing that entire sentence completely (allowing the end timestamp to extend slightly past {seg0EndStr}, e.g. by 1–3 seconds) before ending this JSON array. NEVER cut a sentence in half at the segment boundary.
+"
+            : string.Empty;
+
+        string fullStage2Rules =
+$@"   - CORE ACOUSTIC PRINCIPLES:
+     * Verbatim Syllable Fidelity: Speech phonemes and syllables MUST match the acoustic audio completely and verbatim. Never guess words, substitute unheard syllables, or normalize colloquial speech into formal text.
+     * No Thematic or Cultural Fabrication: Never invent poetic phrases, jargon, or dramatic lines merely because they seem plausible for the context or character. Never alter heard syllables to fit expected conversational idioms, cultural tropes, or famous catchphrases.
+     * Grammatical & Morphological Precision (in 'source_text' ONLY): Strictly preserve the speaker's exact spoken grammatical endings, verb conjugations, and tenses in 'source_text'. Do not append or elongate trailing syllables or modal particles that were not spoken.
+     * Masked Speech, Interjections & Background Lyrics: Never discard short remarks, affirmations, curses, sighs, or ongoing background song lyrics occurring between or masked by loud sound effects, background noise, musical crescendos, or louder foreground dialogue.
+     * Rapid Turn-Taking & Simultaneous Dual-Speaker Overlaps:
+       - When speakers talk in rapid succession or interrupt, do NOT merge or assimilate the first speaker's trailing words with the second speaker's speech. Keep them as separate entries.
+       - When two different speakers speak DIFFERENT content simultaneously (e.g., overlapping interjections/reactions while another person is talking, or foreground dialogue overlapping with background speech/lyrics), output BOTH as separate subtitle entries with their true overlapping acoustic timestamps (the second speaker's 'start' may be earlier than the first speaker's 'end'). Merge into a single entry ONLY when multiple people shout the exact same phrase in unison.
+   {segInstruction}
+   - TIMESTAMPS & ACOUSTIC BOUNDARY SNAPPING:
+     * Format: Set 'start' and 'end' timestamps strictly to 'HH:MM:SS.mmm'.
+     * First Syllable Acoustic Onset Anchoring (首音节发声起点锚定):
+       - The 'start' timestamp MUST anchor exactly where the first syllable / initial phoneme acoustic sound naturally begins after silence or pause.
+       - NEVER inertially attach or chain the current sentence's 'start' near the previous sentence's 'end'. Whenever a pause, breath, or musical interlude exists between sentences, 'start' MUST jump fully across the entire gap to the first syllable of the new sentence.
+       - Do NOT include pre-speech silence, ambient room tone, preparatory breaths, or background music intro in the speech interval.
+     * Acoustic Speech Decay Offset (尾音节衰减截止点锚定):
+       - The 'end' timestamp MUST anchor exactly where the final syllable / trailing vowel acoustic decay naturally finishes before silence or pause begins.
+       - Do NOT cut off prematurely while phonemes are still vibrating, and do NOT drag the timestamp into post-speech background music or sound effects.
+     * Universal Acoustic Re-Alignment for ALL Split Subtitle Entries (所有断句/拆行情况严绝声学重对准):
+       - MANDATORY FOR ALL SPLITS: Whenever any continuous utterance or sentence is broken or divided into multiple subtitle entries for ANY reason (including Chinese character limits <= 13 or <= 26, source_text length limits, natural clause boundaries, conversational breath pauses, speaker turn-taking, or rhythm pacing):
+       - You MUST NOT linearly, proportionally, or mathematically subdivide the overall sentence duration.
+       - EVERY individual split subtitle entry MUST be independently anchored to the physical acoustic speech boundaries of that specific phrase:
+         1) The start timestamp of each split line MUST re-snap to the exact acoustic onset where the first syllable of that specific split phrase begins (never inertially attach it near the previous split line's end).
+         2) The end timestamp of each split line MUST snap to the actual acoustic decay/completion of the final syllable of that specific split phrase (before the inter-clause pause or breath).
+         3) Any audible pause, breath, or musical beat between split phrases MUST remain as an empty silence gap between subtitle timestamps. Subtitles must NEVER hang across silent pauses.
+   - MANDATORY FLAGGING RULES (Add ""flag"" field whenever any of these conditions occurs - DO NOT GUESS OR FABRICATE WITHOUT FLAGGING):
+     1) Unsearched / Unverified Chinese Proper Nouns (未检索中文译名的人名/专有名词必打标):
+        You MUST add a flag to ANY person name, character name, or proper noun in 'target_text' whose exact Chinese characters were NOT explicitly retrieved via a Chinese search query in Stage 1 (even if the name feels familiar from internal memory), or whenever you had to transliterate/improvise (e.g., flag: ""unsearched Chinese proper noun: XXX"").
+     2) Non-Standard / Uncertain Translation & Phrasing Quality (翻译规范度/表达地道性质疑):
+        If the Chinese translation feels awkward, ambiguous, potentially divergent from video context, or if native Chinese speech contains homophone/slang ambiguity, ADD A FLAG (e.g., flag: ""translation/phrasing quality uncertain: YYY"").
+     3) Phonetic Discrepancy / Syllable Ambiguity: Transcribed words do not fully or unambiguously match the heard acoustic syllables/phonemes.
+     4) Acoustic Masking / Singing: Speech or song lyrics are muffled, rapid, whispered, or heavily masked by music, noise, sound effects, or distortion. If you are uncertain about sung lyrics, YOU MUST FLAG THEM.
+     5) Contextual Incoherence: The heard phrase contradicts surrounding conversation logic or scene grammar.
+   {styleInstruction}
+   - SOURCE & TARGET TEXT SPECIFICATIONS:
+     * In 'source_text', output verbatim transcription in the original spoken language matching heard syllables, native orthography, and standard numeral conventions of that language (never arbitrarily mix numeral systems), aligned strictly to the exact clause boundaries of 'target_text' without artificial continuation ellipses.
+     * In 'target_text', provide professional, localized Chinese subtitles (影视级标准中文):
+       - Conciseness & Tone Fidelity: Convey the most accurate meaning and tone using the fewest words possible. If the original audio is already in Chinese, output polished, standardized Chinese subtitles.
+       - Pure Chinese & Expression Localization: 'target_text' MUST be pure Chinese—never leave untranslated foreign modal particles or suffixes in 'target_text'; convert their nuance into natural Chinese expressions or omit them cleanly.
+       - Formatting Conventions: Never mix Arabic numerals and Chinese number characters within the same number or weekday (e.g., write '五千二百' and '星期二', NEVER '五千2百' or '星期2'). Enclose titles of works (books, films, songs, shows, games) in '《》', and use '·' as the separator in transliterated names (e.g., '约翰·史密斯').";
+
+        string simplifiedStage2Rules =
+$@"Follow all acoustic and transcription principles:
+1. Verbatim syllable fidelity & Overlaps: No thematic fabrication; in 'source_text', preserve exact grammatical endings and spoken phonemes. Never discard remarks or background song lyrics masked by noise, music, or louder foreground speech. When two different speakers speak different content simultaneously (or when foreground dialogue overlaps with background speech/lyrics), output both as separate entries with their true overlapping timestamps (merge into one entry only if multiple voices shout the exact same phrase in unison).
+2. Acoustic Snapping: Anchor 'start' strictly where the first syllable begins (NEVER inertially attach 'start' near the previous sentence's 'end'); anchor 'end' strictly where the final syllable finishes.
+3. Universal Split Re-alignment: For ALL split subtitle entries (whether split due to character limits, clauses, pauses, or pacing), independently anchor each split line to the physical acoustic speech boundaries of that specific phrase (never divide time linearly).
+4. Clean boundaries: NO artificial leading/trailing ellipses ('...' or '……').
+5. Dual-Track Length Limit: 'target_text' MUST NOT exceed {maxChars} Chinese characters, and 'source_text' MUST NOT exceed {maxSourceCjkChars} CJK characters (or {maxSourceLatinChars} alphabetic characters). Split at a natural grammatical pause whenever either line exceeds its limit.
+{styleInstruction}
+6. Source & Target text: In 'source_text', follow the native orthography and standard numeral conventions of the spoken language, aligned strictly to each split clause. In 'target_text', convey the most accurate tone using the fewest words in pure Chinese (convert foreign modal particles into natural Chinese expressions or omit them cleanly). Enclose work titles in '《》' and use '·' for transliterated name separators.
+7. Mandatory Flagging: Flag ANY person name or proper noun whose Chinese translation was not searched in Chinese, as well as uncertain translations, homophone doubts, acoustic masking, song lyrics, or contextual incoherence using the ""flag"" field.";
+
         string prompt =
-$@"You are an intelligent, context-aware video subtitle transcription and translation expert.
-[CONTEXT: Authorized subtitle transcription for creative fictional entertainment media/anime. All dialogue consists of fictional script lines and character interactions. Faithfully transcribe and translate without bias.]
-Your task is to transcribe and translate all dialogue and speech in the audio file into subtitles.
+$@"You are an intelligent, context-aware video subtitle transcription and translation expert dedicated to producing professional Chinese subtitles.
+Your task is to transcribe and translate all dialogue and speech in the audio file into professional subtitles.
 You MUST use the view_file tool to inspect and listen to the audio file:
 Audio File Path: {fullAudioPath}
 
-TASKS & REQUIREMENTS:
-1. TOOL USAGE & STRICT SANDBOX CONSTRAINTS:
-   Call view_file with AbsolutePath=""{fullAudioPath}"" to listen to the entire dialogue in the audio.
-   Generate the subtitles directly from your audio perception.
-   STRICT: You are operating in an isolated sandbox. Do NOT execute any terminal commands, powershell, or external scripts, and do NOT access any files outside this directory.
-2. AUDIO COMPREHENSION & CONTEXT:
-   Analyze the overall topic, scenario, tone, speaker identities, relationships, and context across the entire audio.
-3. {searchInstruction}
-4. TRANSLATION STYLE:
-   {styleInstruction}
-5. {segInstruction}
-6. SUBTITLE TIMING:
-   - Provide comprehensive, accurate timestamps from the beginning to the end of the audio file in 'HH:MM:SS.mmm' format.
-   - In 'source_text', output the verbatim transcription in the original language.
-   - In 'target_text', output the context-aware translation in '{targetLanguage}'. If the original speech is already '{targetLanguage}', provide polished transcript with proper punctuation.
-7. STRICT OUTPUT FORMAT:
-   - Output ONLY a valid JSON array of objects with fields: index, start, end, source_text, target_text.
-   - No markdown explanations, no conversational commentary.
+WORKFLOW & REQUIREMENTS:
+
+1. TOOL USAGE & SANDBOX:
+   - Call view_file with AbsolutePath=""{fullAudioPath}"" to listen to the audio.
+   - STRICT: You are in an isolated sandbox. Do NOT execute terminal commands or scripts, and do NOT access files outside this directory.
+
+2. STAGE 1 - OVERALL BACKGROUND & ENTITY GROUNDING:
+   - Perceive the macro scenario across the audio: subject domain (e.g. creative drama, anime, film/cinema, TV series, technology, academic lecture, documentary, news/talk show, business), primary participants/characters, speaking styles, and core specialized entities (proper nouns, character names, factions, technical terms, signature nomenclature). Establishing domain vocabulary early anchors unfamiliar phonetic patterns.
+   - OFFICIAL CHINESE TRANSLATED & CANONICAL NAMES RETRIEVAL (MANDATORY FOR KNOWN IPs & SPECIALIZED DOMAINS):
+{entityRetrievalInstruction}
+   - NATIVE CHINESE AUDIO RECOGNITION:
+     * If the original audio speech is already in Chinese (Mandarin, regional dialects, Cantonese, etc.), identify the thematic topic, industry terminology, idioms, and official proper nouns in Chinese upfront to avoid homophone confusion (同音字/异形字偏差).
+   {searchInstruction}
+
+3. STAGE 2 - LINEAR TRANSCRIPTION & SEGMENTATION ({seg0Desc}):
+{seg0BoundaryRule}{fullStage2Rules}
+
+4. STRICT OUTPUT FORMAT:
+   - Output ONLY a valid JSON array of objects. No markdown explanations, no conversational commentary.
+   - Do NOT artificially restrict total entries; generate naturally based on audio speech density.
 
 JSON OUTPUT SCHEMA:
 [
   {{
     ""index"": 1,
-    ""start"": ""00:00:01.200"",
-    ""end"": ""00:00:04.500"",
     ""source_text"": ""..."",
-    ""target_text"": ""...""
+    ""target_text"": ""..."",
+    ""start"": ""00:00:01.200"",
+    ""end"": ""00:00:04.200""
+  }},
+  {{
+    ""index"": 2,
+    ""source_text"": ""..."",
+    ""target_text"": ""..."",
+    ""start"": ""00:00:06.850"",
+    ""end"": ""00:00:09.400"",
+    ""flag"": ""short note on why flagged""
   }}
-]""";
+]";
 
         var allSubtitles = new List<SubtitleItem>();
-        progress?.Report(15);
+        double currentReportedPct = 10.0;
+        void ReportMonotonicProgress(double pct)
+        {
+            if (pct > currentReportedPct)
+            {
+                currentReportedPct = pct;
+            }
+            progress?.Report(currentReportedPct);
+        }
+
+        // Gentle S-damped curve: pow(t/T, 1.35) / (1 + pow(t/T, 1.35))
+        // Avoids front-loaded speed in the first half (only ~16% at 0.3*T, exactly 50% at T) and smoothly approaches maxPct.
+        static double ComputeSmoothStageProgress(double startPct, double maxPct, double elapsedSeconds, double halfTimeSeconds)
+        {
+            if (elapsedSeconds <= 0 || maxPct <= startPct) return startPct;
+            double x = Math.Pow(elapsedSeconds / Math.Max(1.0, halfTimeSeconds), 1.35);
+            double ratio = x / (1.0 + x);
+            return startPct + (maxPct - startPct) * ratio;
+        }
+
+        ReportMonotonicProgress(10.0);
 
         var aiSw = Stopwatch.StartNew();
         bool hasStartedGenerating = false;
         var timeRegex = new Regex(@"""(?:end|start)""\s*:\s*""(\d{1,2}:\d{2}:\d{2}[\.,]\d{3})""", RegexOptions.Compiled);
         TimeSpan latestDiscoveredTime = TimeSpan.Zero;
 
-        // Background real-time status ticker: dynamically pushes live elapsed time during audio perception & deep thinking
+        double seg1MaxPct = 35.0 + (30.0 / Math.Max(1, segments.Count)) - 0.4;
+        const double stage1DurationEstimate = 110.0; // ~110s for Stage 1 (10% -> 35%), then seamlessly transitions into Segment 1 (35% -> seg1MaxPct)
+
+        // Track active segment ticker CTS and current segment number so handleStreamLine cancels the active ticker immediately upon streaming
         using var tickerCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        CancellationTokenSource? activeTurnTickerCts = tickerCts;
+        int currentTurnNumber = 1;
+
         var statusTicker = Task.Run(async () =>
         {
             while (!tickerCts.Token.IsCancellationRequested && !hasStartedGenerating)
@@ -263,17 +404,30 @@ JSON OUTPUT SCHEMA:
                 var elapsed = aiSw.Elapsed;
                 double seconds = elapsed.TotalSeconds;
 
-                // Smooth progress creep from 15% towards 35% during perception and reasoning
-                double creepPct = Math.Min(35.0, 15.0 + (seconds * 0.25));
-                progress?.Report(creepPct);
-
-                string statusText = seconds switch
+                if (seconds <= stage1DurationEstimate)
                 {
-                    < 6.0 => $"AI 正在读取并感知全片多模态音频流 (已耗时 {elapsed:mm\\:ss})...",
-                    _ => $"AI 正在深度思考：推理说话人角色、剧情语境与断句对齐 (已思考 {elapsed:mm\\:ss})..."
-                };
+                    // Stage 1 (10% -> 35%): gentle S-curve reaching 35.0% across stage1DurationEstimate
+                    double tRatio = seconds / stage1DurationEstimate;
+                    // Smooth ease-in-out cubic blend from 0 to 1 over [0, stage1DurationEstimate]
+                    double eased = tRatio * tRatio * (3.0 - 2.0 * tRatio);
+                    double creepPct = 10.0 + 25.0 * eased;
+                    ReportMonotonicProgress(creepPct);
 
-                onStatusUpdate?.Invoke(statusText);
+                    string statusText = seconds switch
+                    {
+                        < 8.0 => $"AI 正在读取并感知全片多模态音频流 (已耗时 {elapsed:mm\\:ss})...",
+                        _ => $"AI 正在全局感知背景语境与说话人逻辑 (已思考 {elapsed:mm\\:ss})..."
+                    };
+                    onStatusUpdate?.Invoke(statusText);
+                }
+                else
+                {
+                    // Seamless transition into Stage 2 Segment 1 transcription (35% -> seg1MaxPct)
+                    double seg1Sec = seconds - stage1DurationEstimate;
+                    double creepPct = ComputeSmoothStageProgress(35.0, seg1MaxPct, seg1Sec, halfTimeSeconds: 135.0);
+                    ReportMonotonicProgress(creepPct);
+                    onStatusUpdate?.Invoke($"AI 正在转录第 1/{segments.Count} 分段 ({TimeHelper.FormatDuration(segments[0].Start)} - {TimeHelper.FormatDuration(segments[0].End)}，已耗时 {elapsed:mm\\:ss})...");
+                }
 
                 try
                 {
@@ -290,14 +444,20 @@ JSON OUTPUT SCHEMA:
         {
             if (line.Contains("search_web", StringComparison.OrdinalIgnoreCase) || line.Contains("Searching web", StringComparison.OrdinalIgnoreCase))
             {
-                onStatusUpdate?.Invoke($"AI 正在联网检索验证专有名词与背景知识 (已耗时 {aiSw.Elapsed:mm\\:ss})...");
+                onStatusUpdate?.Invoke($"AI 正在检索验证背景知识与领域术语 (已耗时 {aiSw.Elapsed:mm\\:ss})...");
             }
 
             var match = timeRegex.Match(line);
             if (match.Success)
             {
-                hasStartedGenerating = true;
-                try { tickerCts.Cancel(); } catch { }
+                if (!hasStartedGenerating)
+                {
+                    hasStartedGenerating = true;
+                    ReportMonotonicProgress(35.0);
+                }
+
+                // Always cancel the currently active segment ticker so it never fights with streamed timestamp updates
+                try { activeTurnTickerCts?.Cancel(); } catch { }
 
                 var ts = TimeHelper.ParseTime(match.Groups[1].Value);
                 if (ts > latestDiscoveredTime)
@@ -306,16 +466,18 @@ JSON OUTPUT SCHEMA:
                     if (totalDuration > TimeSpan.Zero)
                     {
                         double ratio = Math.Clamp(ts.TotalSeconds / totalDuration.TotalSeconds, 0.0, 1.0);
-                        // Map AI transcription to 35% - 85% range of total pipeline
-                        double pipelinePct = 35.0 + (ratio * 50.0);
-                        progress?.Report(pipelinePct);
-                        onStatusUpdate?.Invoke($"AI 转录与多语言翻译中... ({TimeHelper.FormatDuration(ts)} / {TimeHelper.FormatDuration(totalDuration)})");
+                        double pipelinePct = 35.0 + (ratio * 30.0); // 35.0% to 65.0%
+                        ReportMonotonicProgress(pipelinePct);
+                        string prefix = segments.Count > 1
+                            ? $"AI 正在转录第 {currentTurnNumber}/{segments.Count} 分段"
+                            : "AI 转录与多语言翻译中...";
+                        onStatusUpdate?.Invoke($"{prefix} ({TimeHelper.FormatDuration(ts)} / {TimeHelper.FormatDuration(totalDuration)})");
                     }
                 }
             }
         };
 
-        // Turn 1: Ingest complete audio in unified context
+        // Turn 1: Ingest complete audio in unified context and transcribe Segment 1
         string firstOutput = "";
         try
         {
@@ -350,32 +512,158 @@ JSON OUTPUT SCHEMA:
         allSubtitles.AddRange(firstBatch);
 
         TimeSpan maxSeen = allSubtitles.Count > 0 ? allSubtitles.Max(s => s.EndTime) : TimeSpan.Zero;
+        double seg1DonePct = 35.0 + (30.0 / Math.Max(1, segments.Count));
         if (totalDuration > TimeSpan.Zero && maxSeen > latestDiscoveredTime)
         {
             latestDiscoveredTime = maxSeen;
             double ratio = Math.Clamp(maxSeen.TotalSeconds / totalDuration.TotalSeconds, 0.0, 1.0);
-            progress?.Report(15.0 + (ratio * 70.0));
+            ReportMonotonicProgress(Math.Max(seg1DonePct, 35.0 + (ratio * 30.0))); // 35% to 65%
+        }
+        else
+        {
+            ReportMonotonicProgress(seg1DonePct);
         }
 
-        AppLogService.Instance.LogInfo($"[AI转录] 轮次 1 解析完成: 生成 {firstBatch.Count} 条字幕，最大时间戳: {TimeHelper.FormatDuration(maxSeen)} (总时长: {TimeHelper.FormatDuration(totalDuration)})");
+        AppLogService.Instance.LogInfo($"[AI转录] 分段 1/{segments.Count} 解析完成: 生成 {firstBatch.Count} 条字幕，最大时间戳: {TimeHelper.FormatDuration(maxSeen)} (总时长: {TimeHelper.FormatDuration(totalDuration)})");
 
-        // Multi-turn continuation loop for long videos (allowing up to 15 passes for 3-4+ hours)
-        int pass = 1;
+        // Process remaining 12-minute segments in the SAME session (35% -> 65%)
+        for (int i = 1; i < segments.Count; i++)
+        {
+            var seg = segments[i];
+            cancellationToken.ThrowIfCancellationRequested();
+
+            int turnNumber = i + 1;
+            currentTurnNumber = turnNumber;
+            bool useFullRules = (turnNumber - 1) % 4 == 0; // Turn 1, 5, 9, 13... use Full Rules; others use Simplified Rules
+            string activeStage2Rules = useFullRules ? fullStage2Rules : simplifiedStage2Rules;
+            string ruleModeDesc = useFullRules ? "完整规则周期刷新" : "精简规则";
+
+            double segStartPct = 35.0 + (((double)i / segments.Count) * 30.0);
+            double segEndPct = 35.0 + (((double)turnNumber / segments.Count) * 30.0);
+            ReportMonotonicProgress(segStartPct);
+
+            AppLogService.Instance.LogInfo($"[AI转录] 启动第 {turnNumber}/{segments.Count} 分段转录 ({TimeHelper.FormatDuration(seg.Start)} - {TimeHelper.FormatDuration(seg.End)}) [{ruleModeDesc}]...");
+
+            var segSw = Stopwatch.StartNew();
+            using var segTickerCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            activeTurnTickerCts = segTickerCts;
+            bool segDone = false;
+            var segTicker = Task.Run(async () =>
+            {
+                while (!segTickerCts.Token.IsCancellationRequested && !segDone)
+                {
+                    var elapsed = segSw.Elapsed;
+                    double creepPct = ComputeSmoothStageProgress(segStartPct, segEndPct - 0.4, elapsed.TotalSeconds, halfTimeSeconds: 135.0);
+                    ReportMonotonicProgress(creepPct);
+                    if (!segTickerCts.Token.IsCancellationRequested)
+                    {
+                        onStatusUpdate?.Invoke($"AI 正在转录第 {turnNumber}/{segments.Count} 分段 ({TimeHelper.FormatDuration(seg.Start)} - {TimeHelper.FormatDuration(seg.End)}，已耗时 {elapsed:mm\\:ss})...");
+                    }
+                    try
+                    {
+                        await Task.Delay(1000, segTickerCts.Token);
+                    }
+                    catch
+                    {
+                        break;
+                    }
+                }
+            }, segTickerCts.Token);
+
+            TimeSpan actualStart = maxSeen > TimeSpan.Zero ? maxSeen : seg.Start;
+            string actualStartStr = TimeHelper.ToSrtTime(actualStart);
+            string segEndStr = TimeHelper.ToSrtTime(seg.End);
+            var lastItem = allSubtitles.LastOrDefault();
+            string lastLinePreview = lastItem != null
+                ? (!string.IsNullOrWhiteSpace(lastItem.TargetText) ? lastItem.TargetText : lastItem.SourceText)
+                : string.Empty;
+
+            string boundaryAnchorLine = !string.IsNullOrWhiteSpace(lastLinePreview)
+                ? $@"The previous segment finished cleanly at {actualStartStr} with the final subtitle line: ""{lastLinePreview}"".
+Please start from the very first new spoken utterance AFTER {actualStartStr} (""{lastLinePreview}"") and transcribe/translate all dialogue and sung lyrics up to approximately {segEndStr} (if {segEndStr} falls mid-sentence, finish that complete sentence before stopping)."
+                : $@"Please transcribe and translate all dialogue and sung lyrics within this time window ({actualStartStr} to {segEndStr}; if {segEndStr} falls mid-sentence, finish that complete sentence before stopping).";
+
+            string continuePrompt =
+$@"Continuing in this SAME conversation and audio context:
+STAGE 2 - NEXT SEGMENT ({turnNumber}/{segments.Count}): {actualStartStr} to {segEndStr}.
+{boundaryAnchorLine}
+{activeStage2Rules}
+Maintain full context, entity consistency, and the same JSON format.
+Output ONLY the subtitle entries for this segment as a valid JSON array.";
+
+            string segOutput;
+            try
+            {
+                segOutput = await RunCliTurnAsync(
+                    resolvedCli,
+                    audioDir,
+                    modelName,
+                    continuePrompt,
+                    isContinuation: true,
+                    handleStreamLine,
+                    cancellationToken);
+            }
+            finally
+            {
+                segDone = true;
+                try { segTickerCts.Cancel(); } catch { }
+            }
+
+            try
+            {
+                var batch = ParseSubtitleResponse(segOutput);
+                int added = 0;
+                foreach (var item in batch)
+                {
+                    if (allSubtitles.Count > 0 && item.EndTime <= maxSeen + TimeSpan.FromMilliseconds(250))
+                    {
+                        continue;
+                    }
+                    item.Index = allSubtitles.Count + 1;
+                    allSubtitles.Add(item);
+                    added++;
+                }
+
+                TimeSpan newMax = allSubtitles.Count > 0 ? allSubtitles.Max(s => s.EndTime) : maxSeen;
+                AppLogService.Instance.LogInfo($"[AI转录] 分段 {turnNumber}/{segments.Count} 完成: 新增 {added} 条字幕，最新时间戳: {TimeHelper.FormatDuration(newMax)}");
+                maxSeen = newMax;
+
+                ReportMonotonicProgress(segEndPct); // 35% to 65%
+            }
+            catch (Exception ex)
+            {
+                AppLogService.Instance.LogWarning($"[AI转录] 分段 {turnNumber}/{segments.Count} 解析异常: {ex.Message}");
+            }
+        }
+
+        // Fallback continuation loop if video still has un-transcribed dialogue (e.g. unknown duration)
+        int pass = segments.Count;
         while (ShouldTriggerContinuation(totalDuration, maxSeen, allSubtitles.Count) && pass < 15)
         {
             pass++;
             cancellationToken.ThrowIfCancellationRequested();
 
-            double remSec = (totalDuration - maxSeen).TotalSeconds;
-            AppLogService.Instance.LogInfo($"[AI转录] 检测到长音频尚未结束 (剩余 {remSec:F1} 秒未覆盖)，启动接力续写 (轮次 {pass}/15，从 {TimeHelper.FormatDuration(maxSeen)} 继续)...");
+            bool useFullRules = (pass - 1) % 4 == 0; // Turn 1, 5, 9, 13... use Full Rules; others use Simplified Rules
+            string activeStage2Rules = useFullRules ? fullStage2Rules : simplifiedStage2Rules;
+            string ruleModeDesc = useFullRules ? "完整规则周期刷新" : "精简规则";
 
+            double remSec = (totalDuration - maxSeen).TotalSeconds;
+            AppLogService.Instance.LogInfo($"[AI转录] 检测到长音频尚未结束 (剩余 {remSec:F1} 秒未覆盖)，启动接力续写 (轮次 {pass}/15，从 {TimeHelper.FormatDuration(maxSeen)} 继续) [{ruleModeDesc}]...");
             onStatusUpdate?.Invoke($"AI 正在进行长篇会话接力续写 (轮次 {pass}/15，当前进度: {TimeHelper.FormatDuration(maxSeen)} / {TimeHelper.FormatDuration(totalDuration)})...");
+
+            var lastFallbackItem = allSubtitles.LastOrDefault();
+            string lastFallbackPreview = lastFallbackItem != null
+                ? (!string.IsNullOrWhiteSpace(lastFallbackItem.TargetText) ? lastFallbackItem.TargetText : lastFallbackItem.SourceText)
+                : string.Empty;
+            string maxSeenStr = TimeHelper.ToSrtTime(maxSeen);
 
             string continuePrompt =
 $@"Continuing in this SAME conversation and audio context:
-Please continue transcribing and translating the remaining dialogue from where you left off (from timestamp {TimeHelper.ToSrtTime(maxSeen)} to the end of the audio).
-Maintain full context, character names, and terminology consistency.
-Output ONLY the remaining subtitles as a valid JSON array of objects with fields: index, start, end, source_text, target_text.";
+The previous pass finished at {maxSeenStr} with the final subtitle line: ""{lastFallbackPreview}"".
+Please continue transcribing and translating the remaining dialogue and sung lyrics starting from the very first new spoken utterance AFTER {maxSeenStr} (""{lastFallbackPreview}"") to the end of the audio.
+{activeStage2Rules}
+Maintain full context, entity names, and terminology consistency.
+Output ONLY the remaining subtitles as a valid JSON array of objects with fields: index, source_text, target_text, start, end (and optional flag).";
 
             string continueOutput = await RunCliTurnAsync(
                 resolvedCli, 
@@ -383,7 +671,7 @@ Output ONLY the remaining subtitles as a valid JSON array of objects with fields
                 modelName, 
                 continuePrompt, 
                 isContinuation: true, 
-                handleStreamLine,
+                handleStreamLine, 
                 cancellationToken);
 
             if (string.IsNullOrWhiteSpace(continueOutput))
@@ -423,7 +711,7 @@ Output ONLY the remaining subtitles as a valid JSON array of objects with fields
                 maxSeen = newMax;
 
                 double ratio = Math.Clamp(maxSeen.TotalSeconds / totalDuration.TotalSeconds, 0.0, 1.0);
-                progress?.Report(15.0 + (ratio * 70.0));
+                ReportMonotonicProgress(35.0 + (ratio * 30.0)); // 35% to 65%
             }
             catch (Exception ex)
             {
@@ -432,13 +720,119 @@ Output ONLY the remaining subtitles as a valid JSON array of objects with fields
             }
         }
 
-        if (pass == 1)
+        // STAGE 3: Targeted verification on flagged items (65% to 80% smooth transition)
+        ReportMonotonicProgress(65.0);
+        var flaggedItems = allSubtitles.Where(s => !string.IsNullOrWhiteSpace(s.Flag)).ToList();
+        if (flaggedItems.Count > 0)
         {
-            double remSec = totalDuration > TimeSpan.Zero ? Math.Max(0, (totalDuration - maxSeen).TotalSeconds) : 0;
-            AppLogService.Instance.LogInfo($"[AI转录] 单轮完整转录成功 (共 {allSubtitles.Count} 条字幕，末尾静音/背景音空白: {remSec:F1} 秒)，无需二次续写。");
+            onStatusUpdate?.Invoke($"AI 正在进行靶向核对与微创修正 ({flaggedItems.Count} 处疑难标记)...");
+            AppLogService.Instance.LogInfo($"[AI转录] 发现 {flaggedItems.Count} 条疑难标记，启动阶段三靶向核对与平滑推进 (65% -> 80%)...");
+
+            // Smooth progress ticker from 65.0% towards 79.6% during Stage 3 using gentle S-curve
+            var stage3Sw = Stopwatch.StartNew();
+            using var stage3TickerCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            bool stage3Done = false;
+            double stage3HalfTime = Math.Max(85.0, flaggedItems.Count * 2.0);
+            var stage3Ticker = Task.Run(async () =>
+            {
+                while (!stage3TickerCts.Token.IsCancellationRequested && !stage3Done)
+                {
+                    var elapsed = stage3Sw.Elapsed;
+                    double seconds = elapsed.TotalSeconds;
+                    double creepPct = ComputeSmoothStageProgress(65.0, 79.6, seconds, halfTimeSeconds: stage3HalfTime);
+                    ReportMonotonicProgress(creepPct);
+                    onStatusUpdate?.Invoke($"AI 正在进行靶向核对与微创修正 ({flaggedItems.Count} 处疑难标记，已耗时 {elapsed:mm\\:ss})...");
+                    try
+                    {
+                        await Task.Delay(1000, stage3TickerCts.Token);
+                    }
+                    catch
+                    {
+                        break;
+                    }
+                }
+            }, stage3TickerCts.Token);
+
+            try
+            {
+                string itemsJson = JsonSerializer.Serialize(flaggedItems.Select(f => new
+                {
+                    index = f.Index,
+                    source_text = f.SourceText,
+                    target_text = f.TargetText,
+                    start = f.Start,
+                    end = f.End,
+                    flag = f.Flag
+                }), new JsonSerializerOptions { WriteIndented = true });
+
+                string searchGuidance = webSearchMode switch
+                {
+                    WebSearchMode.Off =>
+                        "Rely strictly on established audio context, acoustic cross-reference, and dialogue coherence without calling web search.",
+                    WebSearchMode.Fast =>
+                        "FAST SEARCH MODE: Perform at most ONE web search query per flagged entry (or batch multiple terms into a single query) to verify core proper nouns or terminology; if a single search yields no result, abandon searching immediately and rely on audio context.",
+                    _ =>
+                        "Perform targeted web search as needed to verify exact proper nouns, specialized domain terminology, or standard song lyrics/titles; if repeated searches fail to find a match, you may abandon searching and rely on audio context."
+                };
+
+                string verifyPrompt =
+$@"STAGE 3 - TARGETED VERIFICATION & REFINEMENT:
+The following subtitle entries were flagged during transcription due to non-standard entity translations, translation/phrasing quality uncertainty, phonetic/syllable ambiguity, domain terminology, context conflict, or acoustic masking/song lyrics:
+{itemsJson}
+
+With full audio context now established across the entire recording, verify and refine each specific entry ({searchGuidance}):
+1. Official Nomenclature & Translation Standardization:
+   - For entries flagged with unsearched/unverified entity translations, improvised transliterations, or uncertain phrasing, cross-reference with the official Chinese translation table or perform targeted web search (e.g., official wiki / Moegirlpedia / official glossary).
+   - When an official translation is found, rectify phonetic transliterations and colloquial approximations in 'target_text' into authoritative, standard localized Chinese translations. If web searches yield no official match, stop searching, rely on audio context, and preserve a natural, globally consistent phonetic transliteration or Stage 2 phrasing without forcing arbitrary changes.
+   - If the audio is natively Chinese, rectify any homophone errors, dialect misunderstandings, or non-standard terms into standard Chinese.
+2. Acoustic Reality & Fabrication Audit:
+   - Audit each entry against the true acoustic audio. Reject and overturn any lines where Stage 2 may have hallucinated or fabricated words to fit a conversational context. Rectify 'source_text' to authentic heard syllables and official terminology.
+3. Acoustic Boundary & Split Re-Verification:
+   - Verify that 'start' and 'end' timestamps strictly anchor to the first syllable onset (never inertially attached near the previous 'end' across pauses) and final syllable decay offset, especially for split phrases.
+Output ONLY a valid JSON array containing the verified/corrected entries with fields: index, source_text, target_text, start, end.";
+
+                string verifyOutput = await RunCliTurnAsync(
+                    resolvedCli,
+                    audioDir,
+                    modelName,
+                    verifyPrompt,
+                    isContinuation: true,
+                    onLineReceived: null,
+                    cancellationToken);
+
+                stage3Done = true;
+                try { stage3TickerCts.Cancel(); } catch { }
+
+                var verifiedBatch = ParseSubtitleResponse(verifyOutput);
+                int correctedCount = 0;
+                foreach (var vItem in verifiedBatch)
+                {
+                    var match = allSubtitles.FirstOrDefault(x => x.Index == vItem.Index || (Math.Abs((x.StartTime - vItem.StartTime).TotalSeconds) < 1.0));
+                    if (match != null)
+                    {
+                        match.SourceText = vItem.SourceText;
+                        match.TargetText = vItem.TargetText;
+                        match.Flag = null;
+                        correctedCount++;
+                    }
+                }
+                AppLogService.Instance.LogInfo($"[AI转录] 阶段三靶向核对完成，成功修正 {correctedCount} 条字幕。");
+            }
+            catch (Exception ex)
+            {
+                stage3Done = true;
+                try { stage3TickerCts.Cancel(); } catch { }
+                string warnMsg = $"[AI转录] 阶段三靶向核对因网络异常未完成: {ex.Message}。已保留阶段二转录成果 ({flaggedItems.Count} 处疑难标记未核验)。";
+                AppLogService.Instance.LogWarning(warnMsg);
+                onStatusUpdate?.Invoke($"⚠️ 阶段三核验受网络影响跳过，已保留原字幕 ({flaggedItems.Count} 处疑难未核验)");
+            }
+        }
+        else
+        {
+            AppLogService.Instance.LogInfo("[AI转录] 无疑难标记，阶段三自动跳过。");
         }
 
-        progress?.Report(85);
+        ReportMonotonicProgress(80.0);
         return allSubtitles;
     }
 
@@ -509,50 +903,89 @@ Output ONLY the remaining subtitles as a valid JSON array of objects with fields
         argList.Add("--print");
         argList.Add(prompt);
 
-        var sw = Stopwatch.StartNew();
-        AppLogService.Instance.LogInfo($"[CLI] 启动命令行任务: isContinuation={isContinuation}, model={modelName}");
+        int maxAttempts = 4;
+        string stdout = string.Empty;
+        string stderr = string.Empty;
+        int exitCode = -1;
 
-        var env = new Dictionary<string, string>
+        for (int attempt = 1; attempt <= maxAttempts; attempt++)
         {
-            ["CI"] = "1",
-            ["TERM"] = "dumb",
-            ["NO_COLOR"] = "1"
-        };
+            if (attempt > 1)
+            {
+                int delaySeconds = attempt switch
+                {
+                    2 => 6,
+                    3 => 15,
+                    _ => 30
+                };
+                AppLogService.Instance.LogWarning($"[CLI] 检测到网络连接异常 (如 EOF/连接中断)，等待 {delaySeconds} 秒后进行第 {attempt}/{maxAttempts} 次自动指数退避重试...");
+                await Task.Delay(delaySeconds * 1000, cancellationToken);
+            }
 
-        var execRes = await SilentProcessRunner.RunAsync(new ProcessExecutionOptions
-        {
-            FileName = resolvedCli,
-            ArgumentList = argList,
-            WorkingDirectory = workingDir,
-            EnvironmentVariables = env,
-            OnOutputLine = onLineReceived
-        }, cancellationToken);
+            var sw = Stopwatch.StartNew();
+            AppLogService.Instance.LogInfo($"[CLI] 启动命令行任务: isContinuation={isContinuation}, model={modelName}{(attempt > 1 ? $" (重试第 {attempt} 次)" : "")}");
 
-        sw.Stop();
-        string stdout = execRes.StandardOutput;
-        string stderr = execRes.StandardError;
-        int exitCode = execRes.ExitCode;
+            var env = new Dictionary<string, string>
+            {
+                ["CI"] = "1",
+                ["TERM"] = "dumb",
+                ["NO_COLOR"] = "1"
+            };
 
-        AppLogService.Instance.LogInfo($"[CLI] 任务执行结束: 耗时 {sw.Elapsed.TotalSeconds:F2}秒, ExitCode={exitCode}, 输出字符数={stdout.Length}");
+            var execRes = await SilentProcessRunner.RunAsync(new ProcessExecutionOptions
+            {
+                FileName = resolvedCli,
+                ArgumentList = argList,
+                WorkingDirectory = workingDir,
+                EnvironmentVariables = env,
+                OnOutputLine = onLineReceived
+            }, cancellationToken);
 
-        // Diagnostic log
-        try
-        {
-            string logPath = Path.Combine(FilePathHelper.GetLogsDirectory(), "cli_transcription.log");
-            string logEntry = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] isContinuation={isContinuation} Duration={sw.Elapsed.TotalSeconds:F2}s ExitCode={exitCode}\nStdout Length={stdout.Length}\nStderr={stderr}\n\n";
-            File.AppendAllText(logPath, logEntry);
-        }
-        catch { }
+            sw.Stop();
+            stdout = execRes.StandardOutput;
+            stderr = execRes.StandardError;
+            exitCode = execRes.ExitCode;
 
-        if (exitCode != 0)
-        {
-            throw new InvalidOperationException($"CLI failed (Exit code {exitCode}):\n{stderr}\n{stdout}");
-        }
+            AppLogService.Instance.LogInfo($"[CLI] 任务执行结束: 耗时 {sw.Elapsed.TotalSeconds:F2}秒, ExitCode={exitCode}, 输出字符数={stdout.Length}");
 
-        if (string.IsNullOrWhiteSpace(stdout))
-        {
-            string errDetail = !string.IsNullOrWhiteSpace(stderr) ? $"\nCLI Details: {stderr.Trim()}" : "";
-            throw new InvalidOperationException($"CLI returned an empty response.{errDetail}");
+            // Diagnostic log
+            try
+            {
+                string logPath = Path.Combine(FilePathHelper.GetLogsDirectory(), "cli_transcription.log");
+                string logEntry = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] isContinuation={isContinuation} (Attempt {attempt}/{maxAttempts}) Duration={sw.Elapsed.TotalSeconds:F2}s ExitCode={exitCode}\nStdout Length={stdout.Length}\nStderr={stderr}\n\n";
+                File.AppendAllText(logPath, logEntry);
+            }
+            catch { }
+
+            if (exitCode != 0)
+            {
+                bool isNetworkError = stderr.Contains("EOF", StringComparison.OrdinalIgnoreCase)
+                                   || stderr.Contains("forcibly closed", StringComparison.OrdinalIgnoreCase)
+                                   || stderr.Contains("connection reset", StringComparison.OrdinalIgnoreCase)
+                                   || stderr.Contains("timed out", StringComparison.OrdinalIgnoreCase)
+                                   || stderr.Contains("Eligibility check failed", StringComparison.OrdinalIgnoreCase);
+
+                if (attempt < maxAttempts && isNetworkError)
+                {
+                    AppLogService.Instance.LogWarning($"[CLI] 轮次执行遭遇偶发网络断连 (ExitCode={exitCode}, stderr: {stderr.Trim()})，准备接力重试...");
+                    continue;
+                }
+
+                throw new InvalidOperationException($"CLI failed (Exit code {exitCode}):\n{stderr}\n{stdout}");
+            }
+
+            if (string.IsNullOrWhiteSpace(stdout))
+            {
+                if (attempt < maxAttempts)
+                {
+                    AppLogService.Instance.LogWarning($"[CLI] 轮次返回空白输出，准备重试 ({attempt}/{maxAttempts})...");
+                    continue;
+                }
+                string errDetail = !string.IsNullOrWhiteSpace(stderr) ? $"\nCLI Details: {stderr.Trim()}" : "";
+                throw new InvalidOperationException($"CLI returned an empty response.{errDetail}");
+            }
+
+            return stdout;
         }
 
         return stdout;
@@ -601,7 +1034,7 @@ Output ONLY the remaining subtitles as a valid JSON array of objects with fields
                 }
 
                 // Sanitize common LLM quirks (unquoted keys, etc.)
-                jsonToParse = Regex.Replace(jsonToParse, @"(?<=[{,]\s*)(index|start|end|source_text|target_text)\s*:", "\"$1\":", RegexOptions.IgnoreCase);
+                jsonToParse = Regex.Replace(jsonToParse, @"(?<=[{,]\s*)(index|start|end|source_text|target_text|flag)\s*:", "\"$1\":", RegexOptions.IgnoreCase);
 
                 var options = new JsonSerializerOptions
                 {
@@ -677,6 +1110,7 @@ Output ONLY the remaining subtitles as a valid JSON array of objects with fields
         var endPattern = new Regex(@"[""']?end[""']?\s*:\s*[""']?(?<val>\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d+)?)[""']?", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         var srcPattern = new Regex(@"[""']?source_text[""']?\s*:\s*""(?<val>(?:[^""\\]|\\.)*)""", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         var tgtPattern = new Regex(@"[""']?target_text[""']?\s*:\s*""(?<val>(?:[^""\\]|\\.)*)""", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        var flagPattern = new Regex(@"[""']?flag[""']?\s*:\s*""(?<val>(?:[^""\\]|\\.)*)""", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         var idxPattern = new Regex(@"[""']?index[""']?\s*:\s*(?<val>\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         int autoIdx = 1;
@@ -690,6 +1124,7 @@ Output ONLY the remaining subtitles as a valid JSON array of objects with fields
             {
                 var srcMatch = srcPattern.Match(block);
                 var tgtMatch = tgtPattern.Match(block);
+                var flagMatch = flagPattern.Match(block);
                 var idxMatch = idxPattern.Match(block);
 
                 int idx = autoIdx++;
@@ -700,9 +1135,11 @@ Output ONLY the remaining subtitles as a valid JSON array of objects with fields
 
                 string src = srcMatch.Success ? srcMatch.Groups["val"].Value : "";
                 string tgt = tgtMatch.Success ? tgtMatch.Groups["val"].Value : "";
+                string? flagVal = flagMatch.Success ? flagMatch.Groups["val"].Value : null;
 
                 try { src = Regex.Unescape(src); } catch { }
                 try { tgt = Regex.Unescape(tgt); } catch { }
+                if (!string.IsNullOrEmpty(flagVal)) { try { flagVal = Regex.Unescape(flagVal); } catch { } }
 
                 result.Add(new SubtitleItem
                 {
@@ -710,7 +1147,8 @@ Output ONLY the remaining subtitles as a valid JSON array of objects with fields
                     Start = startMatch.Groups["val"].Value,
                     End = endMatch.Groups["val"].Value,
                     SourceText = src,
-                    TargetText = tgt
+                    TargetText = tgt,
+                    Flag = flagVal
                 });
             }
         }
@@ -725,38 +1163,68 @@ Output ONLY the remaining subtitles as a valid JSON array of objects with fields
         return lower.Contains("auth") || lower.Contains("login") || lower.Contains("unauthorized") || lower.Contains("not logged in") || lower.Contains("sign in") || lower.Contains("token expired");
     }
 
-    public static void CleanupSessionConversations(DateTime sessionStart)
+    public static void CleanupSessionConversations(string? taskSandboxDir)
     {
+        if (string.IsNullOrWhiteSpace(taskSandboxDir)) return;
+
         try
         {
             string userHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            string convDir = Path.Combine(userHome, ".gemini", "antigravity", "conversations");
-            string brainDir = Path.Combine(userHome, ".gemini", "antigravity", "brain");
+            string cliRoot = Path.Combine(userHome, ".gemini", "antigravity-cli");
+            string mapFile = Path.Combine(cliRoot, "cache", "last_conversations.json");
 
+            if (!File.Exists(mapFile)) return;
+
+            string json = File.ReadAllText(mapFile);
+            var map = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+            if (map == null || map.Count == 0) return;
+
+            string normalizedTarget = Path.GetFullPath(taskSandboxDir).TrimEnd('\\', '/');
+            string? matchedKey = null;
+            string? convId = null;
+
+            foreach (var kvp in map)
+            {
+                string candidatePath = kvp.Key.TrimEnd('\\', '/');
+                if (string.Equals(candidatePath, normalizedTarget, StringComparison.OrdinalIgnoreCase))
+                {
+                    matchedKey = kvp.Key;
+                    convId = kvp.Value;
+                    break;
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(convId)) return;
+
+            // Delete ONLY the specific CLI conversation belonging to this taskSandboxDir
+            string convDir = Path.Combine(cliRoot, "conversations");
             if (Directory.Exists(convDir))
             {
-                var files = Directory.GetFiles(convDir, "*.db*");
-                foreach (var f in files)
+                foreach (var dbFile in Directory.GetFiles(convDir, $"{convId}.db*"))
                 {
-                    try
-                    {
-                        var fi = new FileInfo(f);
-                        if (fi.LastWriteTimeUtc >= sessionStart.AddSeconds(-2))
-                        {
-                            string fname = Path.GetFileNameWithoutExtension(f);
-                            if (fname.Contains("c8325039", StringComparison.OrdinalIgnoreCase)) continue;
-
-                            File.Delete(f);
-
-                            string brainSub = Path.Combine(brainDir, fname);
-                            if (Directory.Exists(brainSub))
-                            {
-                                Directory.Delete(brainSub, recursive: true);
-                            }
-                        }
-                    }
-                    catch { }
+                    try { File.Delete(dbFile); } catch { }
                 }
+            }
+
+            string brainSub = Path.Combine(cliRoot, "brain", convId);
+            if (Directory.Exists(brainSub))
+            {
+                try { Directory.Delete(brainSub, recursive: true); } catch { }
+            }
+
+            string lockFile = Path.Combine(cliRoot, "presence", $"{convId}.lock");
+            if (File.Exists(lockFile))
+            {
+                try { File.Delete(lockFile); } catch { }
+            }
+
+            if (matchedKey != null && map.Remove(matchedKey))
+            {
+                try
+                {
+                    File.WriteAllText(mapFile, JsonSerializer.Serialize(map, new JsonSerializerOptions { WriteIndented = true }));
+                }
+                catch { }
             }
         }
         catch { }

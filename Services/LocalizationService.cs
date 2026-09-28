@@ -77,34 +77,39 @@ public class LocalizationService
     public string TargetLanguageLabel => IsChinese ? "字幕翻译目标语言：" : "Target Subtitle Language:";
 
     public string ThinkingIntensityLabel => IsChinese ? "思考强度 (Thinking Intensity)：" : "Thinking Intensity:";
-    public string IntensityHigh => IsChinese ? "高 (深度语义分析与精细断句)" : "High (Deep semantic analysis & precise segmentation)";
-    public string IntensityMedium => IsChinese ? "中 (速度与深度平衡 - 默认)" : "Medium (Balanced speed & depth - Default)";
+    public string IntensityHigh => IsChinese ? "高 (深度语义分析与精细断句 - 默认推荐)" : "High (Deep semantic analysis & precise segmentation - Default)";
+    public string IntensityMedium => IsChinese ? "中 (速度与深度平衡)" : "Medium (Balanced speed & depth)";
     public string IntensityLow => IsChinese ? "低 (快速生成，减少思考时间)" : "Low (Fast generation, minimal thinking)";
 
     public string SegmentationStyleLabel => IsChinese ? "断句分割风格偏好：" : "Segmentation Style:";
-    public string DenseShortStyle => IsChinese ? "多断句 (短句独立拆分，节奏紧凑，适合演讲与短视频 - 推荐)" : "Dense Short Sentences (Short split, brisk pace - Recommended)";
-    public string SparseLongStyle => IsChinese ? "少断句 (长句完整合并，语义连贯)" : "Sparse Long Sentences (Merged long sentences)";
-
+    public string StandardStyle => IsChinese ? "标准断句 (单行上限26字，自主规范断句 - 默认推荐)" : "Standard Segmentation (Max 26 chars/line, autonomous segmentation - Default)";
+    public string ShorterStyle => IsChinese ? "较短断句 (单行上限13字，适合短视频/大字号或快节奏屏幕)" : "Shorter Segmentation (Max 13 chars/line, suitable for large fonts/short-form)";
+    public string DenseShortStyle => StandardStyle;
+    public string SparseLongStyle => ShorterStyle;
+    public string AboutSectionTitle => IsChinese ? "4. 关于" : "4. About";
+    public string AppAboutTitle => IsChinese ? "灵幕助手" : "LingMu Caption";
+    public string AppAuthor => IsChinese ? "by 风ノ夏" : "by FengNoxia";
+    public string HomeBtnText => IsChinese ? "bilibili主页" : "bilibili Home";
+    public string ReleasesBtnText => IsChinese ? "github发布页" : "github Releases";
+    public string FeedbackBtnText => IsChinese ? "问题反馈" : "Feedback";
     public string EffectSectionTitle => IsChinese ? "3. 特效字幕样式设计与实时预览" : "3. Subtitle Style Designer & Live Preview";
-    public string FontLabel => IsChinese ? "字体选择 (自动读取系统安装字体)：" : "Font Family (System installed fonts):";
+    public string FontLabel => IsChinese ? "主字体选择 (自动读取系统安装字体)：" : "Main Font Family (System installed fonts):";
+    public string SecondaryFontLabel => IsChinese ? "副字幕字体：" : "Secondary Font Family:";
     public string FontSizeLabel => IsChinese ? "主字体大小：" : "Font Size:";
     public string FontStyleLabel => IsChinese ? "字体样式：" : "Font Style:";
     public string BoldLabel => IsChinese ? "粗体" : "Bold";
     public string ItalicLabel => IsChinese ? "斜体" : "Italic";
-    public string AlignmentLabel => IsChinese ? "字幕对齐方式：" : "Alignment:";
-    public string AlignBottomCenter => IsChinese ? "底部居中 (默认)" : "Bottom Center (Default)";
-    public string AlignTopCenter => IsChinese ? "顶部居中" : "Top Center";
-    public string AlignBottomLeft => IsChinese ? "底部靠左" : "Bottom Left";
-    public string AlignBottomRight => IsChinese ? "底部靠右" : "Bottom Right";
     public string SecondaryScaleLabel => IsChinese ? "副字幕缩放比例：" : "Secondary Subtitle Scale:";
     public string LetterSpacingLabel => IsChinese ? "字间距：" : "Letter Spacing:";
     public string MarginVLabel => IsChinese ? "垂直底边距：" : "Bottom Margin:";
+    public string SubSpacingLabel => IsChinese ? "主副字幕间距：" : "Subtitle Spacing:";
     public string PrimaryColorLabel => IsChinese ? "主字幕颜色：" : "Primary Color:";
     public string SecondaryColorLabel => IsChinese ? "副字幕颜色：" : "Secondary Color:";
     public string OutlineColorLabel => IsChinese ? "描边颜色：" : "Outline Color:";
     public string OutlineWidthLabel => IsChinese ? "描边粗细：" : "Outline Width:";
     public string ShadowDepthLabel => IsChinese ? "投影深度：" : "Shadow Depth:";
     public string ShadowColorLabel => IsChinese ? "投影颜色：" : "Shadow Color:";
+    public string EdgeBlurLabel => IsChinese ? "边缘柔化：" : "Edge Softening:";
     public string AnimationPresetLabel => IsChinese ? "动态效果预设：" : "Animation Preset:";
     public string AnimNone => IsChinese ? "无动效 (静态居中)" : "None (Static)";
     public string AnimFade => IsChinese ? "平滑淡入淡出 (推荐)" : "Smooth Fade In/Out (Recommended)";
@@ -119,4 +124,6 @@ public class LocalizationService
     public string NotificationCompletedBody => IsChinese ? "所有待处理视频已成功生成字幕！" : "All video tasks have been processed successfully!";
     public string OpenFolderBtn => IsChinese ? "打开" : "Open";
     public string RetryBtn => IsChinese ? "重试" : "Retry";
+    public string CancelTaskBtn => IsChinese ? "取消" : "Cancel";
+    public string StatusCanceled => IsChinese ? "已取消" : "Canceled";
 }

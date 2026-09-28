@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -35,6 +36,7 @@ public sealed partial class SettingsPage : Page
         ApplyLocalization();
         PopulateDropdowns();
         LoadValuesToUi();
+        LoadAboutAppIcon();
 
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         UpdateCliUi();
@@ -88,7 +90,9 @@ public sealed partial class SettingsPage : Page
 
     private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(ViewModel.IsCliReady) || e.PropertyName == nameof(ViewModel.CliStatusMessage))
+        if (e.PropertyName == nameof(ViewModel.IsCliReady)
+            || e.PropertyName == nameof(ViewModel.CliStatusMessage)
+            || e.PropertyName == nameof(ViewModel.IsCheckingCli))
         {
             DispatcherQueue.TryEnqueue(UpdateCliUi);
         }
@@ -121,8 +125,8 @@ public sealed partial class SettingsPage : Page
         ModeHardsubRadio.Content = loc.ModeHardsub;
 
         SegmentationStyleLabelBlock.Text = loc.SegmentationStyleLabel;
-        SegDenseShortRadio.Content = loc.DenseShortStyle;
-        SegSparseLongRadio.Content = loc.SparseLongStyle;
+        SegStandardRadio.Content = loc.StandardStyle;
+        SegShorterRadio.Content = loc.ShorterStyle;
 
         TransStyleLabelBlock.Text = loc.TranslationStyleLabel;
         StyleLiteralRadio.Content = loc.StyleLiteral;
@@ -143,22 +147,31 @@ public sealed partial class SettingsPage : Page
         ExitFullscreenBtnText.Text = loc.ExitFullscreenBtn;
 
         FontLabelBlock.Text = loc.FontLabel;
+        SecondaryFontLabelBlock.Text = loc.SecondaryFontLabel;
         FontSizeLabelBlock.Text = loc.FontSizeLabel;
         FontStyleLabelBlock.Text = loc.FontStyleLabel;
         BoldCheckBox.Content = loc.BoldLabel;
         ItalicCheckBox.Content = loc.ItalicLabel;
         PrimaryColorLabelBlock.Text = loc.PrimaryColorLabel;
         SecondaryColorLabelBlock.Text = loc.SecondaryColorLabel;
-        AlignmentLabelBlock.Text = loc.AlignmentLabel;
         SecondaryScaleLabelBlock.Text = loc.SecondaryScaleLabel;
         LetterSpacingLabelBlock.Text = loc.LetterSpacingLabel;
         MarginVLabelBlock.Text = loc.MarginVLabel;
+        SubSpacingLabelBlock.Text = loc.SubSpacingLabel;
         OutlineWidthLabelBlock.Text = loc.OutlineWidthLabel;
         OutlineColorLabelBlock.Text = loc.OutlineColorLabel;
         ShadowDepthLabelBlock.Text = loc.ShadowDepthLabel;
         ShadowColorLabelBlock.Text = loc.ShadowColorLabel;
+        EdgeBlurLabelBlock.Text = loc.EdgeBlurLabel;
         AnimationPresetLabelBlock.Text = loc.AnimationPresetLabel;
         AnimationSpeedLabelBlock.Text = loc.AnimSpeedLabel;
+
+        AboutSectionTitleBlock.Text = loc.AboutSectionTitle;
+        AboutAppTitleBlock.Text = loc.AppAboutTitle;
+        AboutAuthorBlock.Text = loc.AppAuthor;
+        HomeBtnLabel.Text = loc.HomeBtnText;
+        ReleasesBtnLabel.Text = loc.ReleasesBtnText;
+        FeedbackBtnLabel.Text = loc.FeedbackBtnText;
 
         PreviewMainTextBlock.Text = ViewModel.SampleMainText;
         PreviewSubTextBlock.Text = ViewModel.SampleSubText;
@@ -167,6 +180,7 @@ public sealed partial class SettingsPage : Page
     private void PopulateDropdowns()
     {
         FontFamilyComboBox.ItemsSource = ViewModel.AvailableFonts;
+        SecondaryFontFamilyComboBox.ItemsSource = ViewModel.AvailableFonts;
         TargetLangComboBox.ItemsSource = ViewModel.AvailableLanguages;
 
         ModelComboBox.ItemsSource = ViewModel.AvailableBaseModels;
@@ -174,10 +188,6 @@ public sealed partial class SettingsPage : Page
         ThinkingIntensityComboBox.ItemsSource = ViewModel.AvailableThinkingIntensities;
         ThinkingIntensityComboBox.SelectedValuePath = "Value";
         ThinkingIntensityComboBox.DisplayMemberPath = "Label";
-
-        AlignmentComboBox.ItemsSource = ViewModel.AvailableAlignments;
-        AlignmentComboBox.SelectedValuePath = "Value";
-        AlignmentComboBox.DisplayMemberPath = "Label";
 
         AnimationComboBox.ItemsSource = ViewModel.AvailableAnimations;
         AnimationComboBox.DisplayMemberPath = "Label";
@@ -200,8 +210,8 @@ public sealed partial class SettingsPage : Page
 
         switch (s.SegmentationStyle)
         {
-            case SegmentationStyle.DenseShort: SegDenseShortRadio.IsChecked = true; break;
-            case SegmentationStyle.SparseLong: SegSparseLongRadio.IsChecked = true; break;
+            case SegmentationStyle.Standard: SegStandardRadio.IsChecked = true; break;
+            case SegmentationStyle.Shorter: SegShorterRadio.IsChecked = true; break;
         }
 
         switch (s.TranslationStyle)
@@ -223,6 +233,7 @@ public sealed partial class SettingsPage : Page
         // Effect config
         var ec = s.EffectConfig;
         FontFamilyComboBox.SelectedItem = ec.FontName;
+        SecondaryFontFamilyComboBox.SelectedItem = string.IsNullOrWhiteSpace(ec.SecondaryFontName) ? ec.FontName : ec.SecondaryFontName;
         FontSizeSlider.Value = ec.FontSize;
         FontSizeValBlock.Text = $"{ec.FontSize} px";
         PrimaryColorBox.Text = ec.PrimaryColor;
@@ -231,8 +242,6 @@ public sealed partial class SettingsPage : Page
         BoldCheckBox.IsChecked = ec.Bold;
         ItalicCheckBox.IsChecked = ec.Italic;
 
-        AlignmentComboBox.SelectedValue = ec.Alignment;
-
         OutlineWidthSlider.Value = ec.OutlineWidth;
         OutlineWidthValBlock.Text = ec.OutlineWidth.ToString("0.0");
         OutlineColorBox.Text = ec.OutlineColor;
@@ -240,6 +249,9 @@ public sealed partial class SettingsPage : Page
         ShadowDepthSlider.Value = ec.ShadowDepth;
         ShadowDepthValBlock.Text = ec.ShadowDepth.ToString("0.0");
         ShadowColorBox.Text = ec.ShadowColor;
+
+        EdgeBlurSlider.Value = ec.EdgeBlur;
+        EdgeBlurValBlock.Text = ec.EdgeBlur.ToString("0.0");
 
         AnimationComboBox.SelectedItem = ViewModel.AvailableAnimations.FirstOrDefault(a => a.Value == ec.Animation)
             ?? ViewModel.AvailableAnimations.FirstOrDefault();
@@ -256,11 +268,29 @@ public sealed partial class SettingsPage : Page
 
         MarginVSlider.Value = ec.MarginV;
         MarginVValBlock.Text = $"{ec.MarginV} px";
+
+        SubSpacingSlider.Value = ec.SubSpacing;
+        SubSpacingValBlock.Text = $"{ec.SubSpacing} px";
     }
 
     private void UpdateCliUi()
     {
         if (CliStatusDot == null || CliStatusMessageBlock == null) return;
+
+        if (RefreshCliBtn != null)
+        {
+            RefreshCliBtn.IsEnabled = !ViewModel.IsCheckingCli;
+        }
+
+        if (ViewModel.IsCheckingCli)
+        {
+            CliStatusDot.Fill = new SolidColorBrush(ColorHelper.FromArgb(255, 245, 158, 11));
+            CliStatusMessageBlock.Text = LocalizationService.Instance.IsChinese
+                ? "正在重新检测 CLI 状态..."
+                : "Checking CLI status...";
+            return;
+        }
+
         CliStatusDot.Fill = ViewModel.IsCliReady
             ? new SolidColorBrush(ColorHelper.FromArgb(255, 16, 124, 65))
             : new SolidColorBrush(ColorHelper.FromArgb(255, 232, 17, 35));
@@ -269,12 +299,20 @@ public sealed partial class SettingsPage : Page
 
     private readonly List<TextBlock> _previewMainOutlines = new();
     private readonly List<TextBlock> _previewSubOutlines = new();
+    private readonly List<TextBlock> _previewTopMainOutlines = new();
+    private readonly List<TextBlock> _previewTopSubOutlines = new();
     private readonly List<TextBlock> _fsMainOutlines = new();
     private readonly List<TextBlock> _fsSubOutlines = new();
+    private readonly List<TextBlock> _fsTopMainOutlines = new();
+    private readonly List<TextBlock> _fsTopSubOutlines = new();
     private TextBlock? _previewMainShadow;
     private TextBlock? _previewSubShadow;
+    private TextBlock? _previewTopMainShadow;
+    private TextBlock? _previewTopSubShadow;
     private TextBlock? _fsMainShadow;
     private TextBlock? _fsSubShadow;
+    private TextBlock? _fsTopMainShadow;
+    private TextBlock? _fsTopSubShadow;
     private CancellationTokenSource? _assPreviewCts;
     private int _assPreviewGeneration;
     private string? _pendingAssPreviewContent;
@@ -441,7 +479,8 @@ public sealed partial class SettingsPage : Page
         TextBlock subTextBlock,
         List<TextBlock> subOutlines,
         ref TextBlock? subShadow,
-        double currentSceneScale)
+        double currentSceneScale,
+        bool isTopTrack = false)
     {
         var ec = ViewModel.Settings.EffectConfig;
         var font = !string.IsNullOrWhiteSpace(ec.FontName) ? new FontFamily(ec.FontName) : FontFamily.XamlAutoFontFamily;
@@ -453,7 +492,7 @@ public sealed partial class SettingsPage : Page
         double safeSceneScale = currentSceneScale > 0.01 ? currentSceneScale : 1.0;
         double visualScaleCompensation = maximumVideoScale / safeSceneScale;
 
-        double baseMainFontSize = ec.FontSize > 0 ? ec.FontSize : 54;
+        double baseMainFontSize = ec.FontSize > 0 ? ec.FontSize : 68;
         double mainFontSize = baseMainFontSize * visualScaleCompensation;
         double secScale = ec.SecondaryScale <= 1.0 ? ec.SecondaryScale : (ec.SecondaryScale / 100.0);
         double baseSubFontSize = Math.Max(12, (int)(baseMainFontSize * secScale));
@@ -482,7 +521,8 @@ public sealed partial class SettingsPage : Page
         double shadowDepth = Math.Max(0, ec.ShadowDepth) * visualScaleCompensation;
 
         TextAlignment textAlign;
-        switch (ec.Alignment)
+        int effectiveAlignment = isTopTrack ? 8 : ec.Alignment;
+        switch (effectiveAlignment)
         {
             case 1: // Bottom Left
                 container.VerticalAlignment = VerticalAlignment.Bottom;
@@ -510,12 +550,17 @@ public sealed partial class SettingsPage : Page
                 break;
         }
 
+        container.Spacing = ec.SubSpacing * visualScaleCompensation;
+
+        string sampleMain = isTopTrack ? ViewModel.SampleTopMainText : ViewModel.SampleMainText;
+        string sampleSub = isTopTrack ? ViewModel.SampleTopSubText : ViewModel.SampleSubText;
+
         UpdateOutlineAndText(
             mainGrid, 
             mainTextBlock, 
             mainOutlines, 
             ref mainShadow,
-            ViewModel.SampleMainText, 
+            sampleMain, 
             font, 
             mainFontSize, 
             weight, 
@@ -532,23 +577,26 @@ public sealed partial class SettingsPage : Page
         subGrid.Visibility = showSub ? Visibility.Visible : Visibility.Collapsed;
         if (showSub)
         {
+            var subFont = !string.IsNullOrWhiteSpace(ec.SecondaryFontName) ? new FontFamily(ec.SecondaryFontName) : font;
+            double subOutlineWidth = outlineWidth > 0 ? Math.Max(0.8 * visualScaleCompensation, outlineWidth * 0.65) : 0.0;
+            double subShadowDepth = shadowDepth * 0.65;
             UpdateOutlineAndText(
                 subGrid, 
                 subTextBlock, 
                 subOutlines, 
                 ref subShadow,
-                ViewModel.SampleSubText, 
-                font, 
+                sampleSub, 
+                subFont, 
                 subFontSize, 
-                weight, 
+                FontWeights.Normal, 
                 style, 
                 subCharSpacing, 
                 textAlign, 
                 secondaryColor, 
                 outlineColor, 
-                outlineWidth,
+                subOutlineWidth,
                 shadowColor,
-                shadowDepth);
+                subShadowDepth);
         }
     }
 
@@ -581,9 +629,22 @@ public sealed partial class SettingsPage : Page
         return Math.Max(0.01, Math.Min(viewportWidth / 1920.0, viewportHeight / 1080.0));
     }
 
+    private void UpdatePreviewClip()
+    {
+        if (PreviewCanvasGrid != null && PreviewCanvasGrid.ActualWidth > 0 && PreviewCanvasGrid.ActualHeight > 0)
+        {
+            PreviewCanvasGrid.Clip = new RectangleGeometry
+            {
+                Rect = new Windows.Foundation.Rect(0, 0, PreviewCanvasGrid.ActualWidth, PreviewCanvasGrid.ActualHeight)
+            };
+        }
+    }
+
     private void UpdatePreviewUi()
     {
         if (PreviewMainTextBlock == null || PreviewSubTextBlock == null || PreviewSubtitleContainer == null || SecondarySubSwitch == null || PreviewMainGrid == null || PreviewSubGrid == null) return;
+
+        UpdatePreviewClip();
 
         RenderSubtitlePreview(
             PreviewSubtitleContainer,
@@ -595,7 +656,27 @@ public sealed partial class SettingsPage : Page
             PreviewSubTextBlock,
             _previewSubOutlines,
             ref _previewSubShadow,
-            1.0);
+            1.0,
+            isTopTrack: false);
+
+        if (PreviewTopSubtitleContainer != null && PreviewTopMainGrid != null && PreviewTopMainTextBlock != null && PreviewTopSubGrid != null && PreviewTopSubTextBlock != null)
+        {
+            // In the compact 340px inline preview, hide the XAML top container so it doesn't collide with the bottom container,
+            // while the 1080p ASS image (clipped to the bottom 340px) and the 1080p Fullscreen preview show the full dual-track frame.
+            PreviewTopSubtitleContainer.Visibility = Visibility.Collapsed;
+            RenderSubtitlePreview(
+                PreviewTopSubtitleContainer,
+                PreviewTopMainGrid,
+                PreviewTopMainTextBlock,
+                _previewTopMainOutlines,
+                ref _previewTopMainShadow,
+                PreviewTopSubGrid,
+                PreviewTopSubTextBlock,
+                _previewTopSubOutlines,
+                ref _previewTopSubShadow,
+                1.0,
+                isTopTrack: true);
+        }
 
         QueueAssPreviewRender();
 
@@ -614,6 +695,7 @@ public sealed partial class SettingsPage : Page
             ApplyAssPreviewLayout(FsAssImage, _assPreviewFrame, 1.0);
             FsAssImage.Visibility = Visibility.Visible;
             FsSubtitleContainer.Visibility = Visibility.Collapsed;
+            if (FsTopSubtitleContainer != null) FsTopSubtitleContainer.Visibility = Visibility.Collapsed;
             return;
         }
 
@@ -623,6 +705,8 @@ public sealed partial class SettingsPage : Page
         double viewportHeight = FullscreenSceneViewbox != null && FullscreenSceneViewbox.ActualHeight > 1
             ? FullscreenSceneViewbox.ActualHeight
             : ActualHeight;
+
+        double sceneScale = GetSceneScale(viewportWidth, viewportHeight);
 
         RenderSubtitlePreview(
             FsSubtitleContainer,
@@ -634,23 +718,51 @@ public sealed partial class SettingsPage : Page
             FsSubTextBlock,
             _fsSubOutlines,
             ref _fsSubShadow,
-            GetSceneScale(viewportWidth, viewportHeight));
+            sceneScale,
+            isTopTrack: false);
+
+        if (FsTopSubtitleContainer != null && FsTopMainGrid != null && FsTopMainTextBlock != null && FsTopSubGrid != null && FsTopSubTextBlock != null)
+        {
+            FsTopSubtitleContainer.Visibility = Visibility.Visible;
+            RenderSubtitlePreview(
+                FsTopSubtitleContainer,
+                FsTopMainGrid,
+                FsTopMainTextBlock,
+                _fsTopMainOutlines,
+                ref _fsTopMainShadow,
+                FsTopSubGrid,
+                FsTopSubTextBlock,
+                _fsTopSubOutlines,
+                ref _fsTopSubShadow,
+                sceneScale,
+                isTopTrack: true);
+        }
     }
 
     private string BuildAssPreviewContent()
     {
         bool includeSecondary = SecondarySubSwitch != null && SecondarySubSwitch.IsOn;
-        var sample = new SubtitleItem
+        var bottomSample = new SubtitleItem
         {
             Index = 1,
             StartTime = TimeSpan.Zero,
             EndTime = TimeSpan.FromSeconds(10),
             TargetText = ViewModel.SampleMainText,
-            SourceText = ViewModel.SampleSubText
+            SourceText = ViewModel.SampleSubText,
+            IsTopTrack = false
+        };
+        var topSample = new SubtitleItem
+        {
+            Index = 2,
+            StartTime = TimeSpan.Zero,
+            EndTime = TimeSpan.FromSeconds(10),
+            TargetText = ViewModel.SampleTopMainText,
+            SourceText = ViewModel.SampleTopSubText,
+            IsTopTrack = true
         };
 
         return SubtitleFormatterService.Instance.GenerateAssContent(
-            new List<SubtitleItem> { sample },
+            new List<SubtitleItem> { bottomSample, topSample },
             ViewModel.Settings.EffectConfig,
             includeSecondary);
     }
@@ -728,6 +840,7 @@ public sealed partial class SettingsPage : Page
                 FsAssImage.Visibility = Visibility.Collapsed;
                 PreviewSubtitleContainer.Visibility = Visibility.Visible;
                 FsSubtitleContainer.Visibility = Visibility.Visible;
+                if (FsTopSubtitleContainer != null) FsTopSubtitleContainer.Visibility = Visibility.Visible;
                 AppLogService.Instance.LogWarning($"[字幕预览] libass 预览渲染失败，已回退到界面预览: {ex.Message}");
             }
         }
@@ -749,13 +862,16 @@ public sealed partial class SettingsPage : Page
 
     private void ShowAssPreviewFrame(FFmpegService.AssPreviewFrame frame)
     {
+        UpdatePreviewClip();
         ApplyAssPreviewLayout(PreviewAssImage, frame, GetMaximumVideoScale());
         ApplyAssPreviewLayout(FsAssImage, frame, 1.0);
 
         PreviewAssImage.Visibility = Visibility.Visible;
         FsAssImage.Visibility = Visibility.Visible;
         PreviewSubtitleContainer.Visibility = Visibility.Collapsed;
+        if (PreviewTopSubtitleContainer != null) PreviewTopSubtitleContainer.Visibility = Visibility.Collapsed;
         FsSubtitleContainer.Visibility = Visibility.Collapsed;
+        if (FsTopSubtitleContainer != null) FsTopSubtitleContainer.Visibility = Visibility.Collapsed;
     }
 
     private void ApplyAssPreviewLayout(
@@ -845,13 +961,18 @@ public sealed partial class SettingsPage : Page
             CliPathBox.Text = file.Path;
             ViewModel.Settings.CliPath = file.Path;
             ViewModel.SaveSettings();
-            await ViewModel.RefreshCliStatusAsync();
+            await ViewModel.RefreshCliStatusAsync(forceRefresh: true);
         }
     }
 
     private async void OnRefreshCliClicked(object sender, RoutedEventArgs e)
     {
-        await ViewModel.RefreshCliStatusAsync();
+        if (CliPathBox != null)
+        {
+            ViewModel.Settings.CliPath = CliPathBox.Text.Trim();
+            ViewModel.SaveSettings();
+        }
+        await ViewModel.RefreshCliStatusAsync(forceRefresh: true);
     }
 
     private void OnModelSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -888,10 +1009,10 @@ public sealed partial class SettingsPage : Page
     private void OnSegStyleChecked(object sender, RoutedEventArgs e)
     {
         if (!_isLoaded) return;
-        if (SegDenseShortRadio.IsChecked == true)
-            ViewModel.Settings.SegmentationStyle = SegmentationStyle.DenseShort;
-        else if (SegSparseLongRadio.IsChecked == true)
-            ViewModel.Settings.SegmentationStyle = SegmentationStyle.SparseLong;
+        if (SegStandardRadio.IsChecked == true)
+            ViewModel.Settings.SegmentationStyle = SegmentationStyle.Standard;
+        else if (SegShorterRadio.IsChecked == true)
+            ViewModel.Settings.SegmentationStyle = SegmentationStyle.Shorter;
 
         ViewModel.SaveSettings();
     }
@@ -951,6 +1072,17 @@ public sealed partial class SettingsPage : Page
         }
     }
 
+    private void OnSecondaryFontChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_isLoaded) return;
+        if (SecondaryFontFamilyComboBox.SelectedItem is string font)
+        {
+            ViewModel.Settings.EffectConfig.SecondaryFontName = font;
+            ViewModel.SaveSettings();
+            UpdatePreviewUi();
+        }
+    }
+
     private void OnFontSizeChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         if (!_isLoaded) return;
@@ -987,17 +1119,6 @@ public sealed partial class SettingsPage : Page
         UpdatePreviewUi();
     }
 
-    private void OnAlignmentChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (!_isLoaded) return;
-        if (AlignmentComboBox.SelectedValue is int align)
-        {
-            ViewModel.Settings.EffectConfig.Alignment = align;
-            ViewModel.SaveSettings();
-            UpdatePreviewUi();
-        }
-    }
-
     private void OnOutlineWidthChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         if (!_isLoaded) return;
@@ -1020,6 +1141,16 @@ public sealed partial class SettingsPage : Page
         if (!_isLoaded) return;
         ShadowDepthValBlock.Text = e.NewValue.ToString("0.0");
         ViewModel.Settings.EffectConfig.ShadowDepth = Math.Round(e.NewValue, 1);
+        ViewModel.SaveSettings();
+        UpdatePreviewUi();
+    }
+
+    private void OnEdgeBlurChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (!_isLoaded) return;
+        double val = Math.Round(e.NewValue, 1);
+        EdgeBlurValBlock.Text = val.ToString("0.0");
+        ViewModel.Settings.EffectConfig.EdgeBlur = val;
         ViewModel.SaveSettings();
         UpdatePreviewUi();
     }
@@ -1083,6 +1214,16 @@ public sealed partial class SettingsPage : Page
         int val = (int)Math.Round(e.NewValue);
         MarginVValBlock.Text = $"{val} px";
         ViewModel.Settings.EffectConfig.MarginV = val;
+        ViewModel.SaveSettings();
+        UpdatePreviewUi();
+    }
+
+    private void OnSubSpacingChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (!_isLoaded) return;
+        int val = (int)Math.Round(e.NewValue);
+        SubSpacingValBlock.Text = $"{val} px";
+        ViewModel.Settings.EffectConfig.SubSpacing = val;
         ViewModel.SaveSettings();
         UpdatePreviewUi();
     }
@@ -1220,5 +1361,66 @@ public sealed partial class SettingsPage : Page
         }
 
         sb.Begin();
+    }
+
+    private async void LoadAboutAppIcon()
+    {
+        try
+        {
+            string[] candidatePaths = new[]
+            {
+                Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.png"),
+                Path.Combine(AppContext.BaseDirectory, "Assets", "AppTitleIcon.png")
+            };
+
+            string? chosen = candidatePaths.FirstOrDefault(File.Exists);
+            if (!string.IsNullOrEmpty(chosen))
+            {
+                using var fs = File.OpenRead(chosen);
+                var ras = fs.AsRandomAccessStream();
+                var bmp = new BitmapImage();
+                await bmp.SetSourceAsync(ras);
+                AboutAppIcon.Source = bmp;
+            }
+        }
+        catch { }
+    }
+
+    private async void OnOpenHomeClicked(object sender, RoutedEventArgs e)
+    {
+        await OpenBrowserUrlAsync("https://space.bilibili.com/1923558499");
+    }
+
+    private async void OnOpenReleasesClicked(object sender, RoutedEventArgs e)
+    {
+        await OpenBrowserUrlAsync("https://github.com/ZX8592/LingMuCaption/releases");
+    }
+
+    private async void OnOpenFeedbackClicked(object sender, RoutedEventArgs e)
+    {
+        await OpenBrowserUrlAsync("https://github.com/ZX8592/LingMuCaption/issues");
+    }
+
+    private static async Task OpenBrowserUrlAsync(string url)
+    {
+        try
+        {
+            if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            {
+                await Windows.System.Launcher.LaunchUriAsync(uri);
+            }
+        }
+        catch
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = url,
+                    UseShellExecute = true
+                });
+            }
+            catch { }
+        }
     }
 }

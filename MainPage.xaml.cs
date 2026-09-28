@@ -205,4 +205,12 @@ public sealed partial class MainPage : Page
             ViewModel.RetryTask(task);
         }
     }
+
+    private void OnCancelClicked(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.Tag is VideoTaskItem task)
+        {
+            ViewModel.CancelTask(task);
+        }
+    }
 }

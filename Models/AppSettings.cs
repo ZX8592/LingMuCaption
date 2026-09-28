@@ -20,8 +20,8 @@ public enum TranslationStyle
 
 public enum SegmentationStyle
 {
-    DenseShort, // 多断句（短句独立，影视/短视频快节奏，默认）
-    SparseLong  // 少断句（长句连贯完整，网课/演讲）
+    Standard, // 标准（单行最多28字，自主规范断句 - 默认推荐）
+    Shorter   // 较短（单行最多14字，防大字号字幕溢出屏幕）
 }
 
 public enum WebSearchMode
@@ -51,7 +51,7 @@ public partial class AppSettings : ObservableObject
     private TranslationStyle _translationStyle = TranslationStyle.Balanced;
 
     [ObservableProperty]
-    private SegmentationStyle _segmentationStyle = SegmentationStyle.DenseShort;
+    private SegmentationStyle _segmentationStyle = SegmentationStyle.Standard;
 
     [ObservableProperty]
     private WebSearchMode _webSearchMode = WebSearchMode.Accurate;

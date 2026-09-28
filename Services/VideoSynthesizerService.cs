@@ -256,8 +256,7 @@ public class VideoSynthesizerService
             using (subFont)
             {
                 bool hasSub = includeSecondary &&
-                              !string.IsNullOrWhiteSpace(item.SourceText) &&
-                              !string.Equals(item.SourceText, item.TargetText, StringComparison.OrdinalIgnoreCase);
+                              !string.IsNullOrWhiteSpace(item.SourceText);
 
                 // Compute layout
                 var sf = new StringFormat
@@ -273,7 +272,7 @@ public class VideoSynthesizerService
                 var subSize = hasSub ? g.MeasureString(item.SourceText, subFont, videoWidth - 100) : SizeF.Empty;
 
                 float totalHeight = mainSize.Height + (hasSub ? subSize.Height + (4 * scaleFactor) : 0);
-                float startY = bottomY - totalHeight;
+                float startY = item.IsTopTrack ? marginV : (bottomY - totalHeight);
 
                 // Draw Main Text
                 var mainRect = new RectangleF(50, startY, videoWidth - 100, mainSize.Height);

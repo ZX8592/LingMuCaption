@@ -13,14 +13,17 @@ public class AppLogService
 
     private readonly object _lock = new();
     private readonly string _primaryLogPath;
+    private readonly string _crashLogPath;
     private readonly string _appDataLogPath;
 
     public string PrimaryLogPath => _primaryLogPath;
+    public string CrashLogPath => _crashLogPath;
 
     public AppLogService()
     {
         string logsDir = Helpers.FilePathHelper.GetLogsDirectory();
         _primaryLogPath = Path.Combine(logsDir, "task_execution.log");
+        _crashLogPath = Path.Combine(logsDir, "crash.log");
 
         string appDataDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -56,6 +59,44 @@ public class AppLogService
             }
         }
         WriteEntry("ERROR", sb.ToString().TrimEnd());
+    }
+
+    public void LogCrash(string source, Exception? ex, string? extraMessage = null)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("================================================================================");
+        sb.AppendLine($"[程序崩溃 / FATAL CRASH] {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}");
+        sb.AppendLine($"  • 触发源 (Source): {source}");
+        if (!string.IsNullOrWhiteSpace(extraMessage))
+        {
+            sb.AppendLine($"  • 附加信息 (Message): {extraMessage}");
+        }
+        if (ex != null)
+        {
+            sb.AppendLine($"  • 异常类型 (Exception): {ex.GetType().FullName}");
+            sb.AppendLine($"  • 异常描述 (Detail): {ex.Message}");
+            if (ex.InnerException != null)
+            {
+                sb.AppendLine($"  • 内部异常 (InnerException): {ex.InnerException.GetType().FullName}: {ex.InnerException.Message}");
+            }
+            if (!string.IsNullOrEmpty(ex.StackTrace))
+            {
+                sb.AppendLine("  • 调用堆栈 (StackTrace):");
+                sb.AppendLine(ex.StackTrace);
+            }
+        }
+        sb.AppendLine("================================================================================");
+
+        string formatted = sb.ToString();
+        AppendRaw(formatted);
+        try
+        {
+            lock (_lock)
+            {
+                File.AppendAllText(_crashLogPath, formatted, Encoding.UTF8);
+            }
+        }
+        catch { }
     }
 
     public void LogTaskStart(

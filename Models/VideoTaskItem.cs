@@ -30,6 +30,8 @@ public partial class VideoTaskItem : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsRunning))]
     [NotifyPropertyChangedFor(nameof(IsCompleted))]
     [NotifyPropertyChangedFor(nameof(IsFailed))]
+    [NotifyPropertyChangedFor(nameof(IsCanceled))]
+    [NotifyPropertyChangedFor(nameof(CanCancel))]
     [NotifyPropertyChangedFor(nameof(ShowElapsedTime))]
     [NotifyPropertyChangedFor(nameof(FormattedElapsedTime))]
     private VideoTaskStatus _status = VideoTaskStatus.Waiting;
@@ -59,6 +61,8 @@ public partial class VideoTaskItem : ObservableObject
 
     public Stopwatch Stopwatch { get; } = new();
 
+    public CancellationTokenSource? Cts { get; set; }
+
     public string ProgressPercentText => $"{Math.Clamp((int)Math.Round(Progress), 0, 100)}%";
 
     public bool IsRunning => Status is VideoTaskStatus.ExtractingAudio
@@ -70,8 +74,13 @@ public partial class VideoTaskItem : ObservableObject
 
     public bool IsFailed => Status == VideoTaskStatus.Failed;
 
+    public bool IsCanceled => Status == VideoTaskStatus.Canceled;
+
+    public bool CanCancel => Status == VideoTaskStatus.Waiting || IsRunning;
+
     public string OpenText => LocalizationService.Instance.OpenFolderBtn;
     public string RetryText => LocalizationService.Instance.RetryBtn;
+    public string CancelText => LocalizationService.Instance.CancelTaskBtn;
 
     public bool ShowElapsedTime => Status != VideoTaskStatus.Waiting || (ElapsedTimeText != "00:00" && !string.IsNullOrEmpty(ElapsedTimeText));
 

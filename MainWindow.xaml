@@ -49,7 +49,7 @@
                         Margin="10,0,16,0">
                 <Image x:Name="TitleIcon" Width="26" Height="26" VerticalAlignment="Center">
                     <Image.RenderTransform>
-                        <TranslateTransform Y="0" />
+                        <TranslateTransform Y="1.5" />
                     </Image.RenderTransform>
                 </Image>
                 <TextBlock x:Name="WindowTitleBlock"

@@ -220,6 +220,17 @@
                                                 <TextBlock Text="{x:Bind RetryText}" FontSize="12" />
                                             </StackPanel>
                                         </Button>
+
+                                        <!-- Cancel Button on Waiting or Running -->
+                                        <Button Visibility="{x:Bind CanCancel, Mode=OneWay}"
+                                                Click="OnCancelClicked"
+                                                Tag="{x:Bind}"
+                                                Style="{ThemeResource SubtleButtonStyle}">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <FontIcon Glyph="&#xE711;" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                <TextBlock Text="{x:Bind CancelText}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                            </StackPanel>
+                                        </Button>
                                     </StackPanel>
                                 </Grid>
 

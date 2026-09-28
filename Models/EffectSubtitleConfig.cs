@@ -18,7 +18,10 @@ public partial class EffectSubtitleConfig : ObservableObject
     private string _fontName = "Microsoft YaHei";
 
     [ObservableProperty]
-    private int _fontSize = 54;
+    private string _secondaryFontName = "Microsoft YaHei";
+
+    [ObservableProperty]
+    private int _fontSize = 68;
 
     [ObservableProperty]
     private bool _bold = true;
@@ -27,10 +30,10 @@ public partial class EffectSubtitleConfig : ObservableObject
     private bool _italic = false;
 
     [ObservableProperty]
-    private string _primaryColor = "#FFFFFF";
+    private string _primaryColor = "#EDEDED";
 
     [ObservableProperty]
-    private string _secondaryColor = "#FFD700";
+    private string _secondaryColor = "#EDEDED";
 
     [ObservableProperty]
     private string _outlineColor = "#000000";
@@ -39,10 +42,16 @@ public partial class EffectSubtitleConfig : ObservableObject
     private string _shadowColor = "#66000000";
 
     [ObservableProperty]
-    private double _outlineWidth = 2.8;
+    private double _outlineWidth = 2.0;
 
     [ObservableProperty]
     private double _shadowDepth = 1.5;
+
+    [ObservableProperty]
+    private double _edgeBlur = 1.0;
+
+    [ObservableProperty]
+    private bool _colorMigratedToEdeded = false;
 
     [ObservableProperty]
     private int _marginV = 45;
@@ -63,8 +72,11 @@ public partial class EffectSubtitleConfig : ObservableObject
     private double _letterSpacing = 0.0;
 
     [ObservableProperty]
-    private AnimationPreset _animation = AnimationPreset.FadeInOut;
+    private AnimationPreset _animation = AnimationPreset.None;
 
     [ObservableProperty]
-    private double _animationSpeed = 1.0;
+    private double _animationSpeed = 2.0;
+
+    [ObservableProperty]
+    private int _subSpacing = 0; // Spacing in pixels between primary and secondary subtitles
 }

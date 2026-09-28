@@ -37,6 +37,39 @@ public class SettingsService
                 {
                     // Ensure EffectConfig exists
                     loaded.EffectConfig ??= new EffectSubtitleConfig();
+
+                    // Migrate legacy default EffectConfig values (56 / 0.65 / 12 / Bold=false) to new defaults (68 / 0.70 / 0 / Bold=true)
+                    var ec = loaded.EffectConfig;
+                    bool needsSave = false;
+                    if (ec.FontSize == 56 && Math.Abs(ec.SecondaryScale - 0.65) < 0.01 && ec.SubSpacing == 12 && !ec.Bold)
+                    {
+                        ec.FontSize = 68;
+                        ec.SecondaryScale = 0.70;
+                        ec.SubSpacing = 0;
+                        ec.Bold = true;
+                        needsSave = true;
+                    }
+
+                    if (!ec.ColorMigratedToEdeded)
+                    {
+                        if (string.Equals(ec.PrimaryColor, "#FFFFFF", StringComparison.OrdinalIgnoreCase))
+                            ec.PrimaryColor = "#EDEDED";
+                        if (string.Equals(ec.SecondaryColor, "#FFFFFF", StringComparison.OrdinalIgnoreCase))
+                            ec.SecondaryColor = "#EDEDED";
+                        ec.ColorMigratedToEdeded = true;
+                        needsSave = true;
+                    }
+
+                    if (needsSave)
+                    {
+                        try
+                        {
+                            var options = new JsonSerializerOptions { WriteIndented = true };
+                            File.WriteAllText(_settingsFilePath, JsonSerializer.Serialize(loaded, options));
+                        }
+                        catch { }
+                    }
+
                     return loaded;
                 }
             }
@@ -47,8 +80,8 @@ public class SettingsService
         }
 
         var defaults = new AppSettings();
-        // If Chinese system, default to zh-CN, otherwise en-US
-        defaults.TargetLanguage = LocalizationService.Instance.IsChinese ? "zh-CN" : "en-US";
+        // Dedicated to Chinese translation and transcription
+        defaults.TargetLanguage = "zh-CN";
         return defaults;
     }
 

@@ -168,6 +168,33 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
+    public void CancelTask(VideoTaskItem item)
+    {
+        if (item == null) return;
+
+        if (item.Status == VideoTaskStatus.Waiting)
+        {
+            RunOnUi(() =>
+            {
+                item.Status = VideoTaskStatus.Canceled;
+                item.StatusText = Loc.StatusCanceled;
+            });
+            AppLogService.Instance.LogInfo($"[任务取消] 队列中等待任务已取消: {item.FileName}");
+            return;
+        }
+
+        if (item.IsRunning)
+        {
+            try
+            {
+                item.Cts?.Cancel();
+                AppLogService.Instance.LogInfo($"[任务取消] 正在中止运行中的任务: {item.FileName}");
+            }
+            catch { }
+        }
+    }
+
+    [RelayCommand]
     public void OpenFolder(VideoTaskItem item)
     {
         if (item == null) return;
@@ -240,6 +267,10 @@ public partial class MainViewModel : ObservableObject
     {
         DateTime taskStartTimeUtc = DateTime.UtcNow;
         string? tempAudio = null;
+        string? createdSrtPath = null;
+        string? createdAssPath = null;
+        string? createdVideoPath = null;
+
         var settings = SettingsService.Instance.CurrentSettings;
         string taskSandboxDir = Path.Combine(Path.GetTempPath(), "LingMuCaption", $"task_{Guid.NewGuid():N}");
         try { Directory.CreateDirectory(taskSandboxDir); } catch { }
@@ -247,6 +278,10 @@ public partial class MainViewModel : ObservableObject
         var totalSw = Stopwatch.StartNew();
         var stageSw = new Stopwatch();
         var stageTimings = new Dictionary<string, double>();
+
+        using var taskCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+        task.Cts = taskCts;
+        var taskToken = taskCts.Token;
 
         RunOnUi(() =>
         {
@@ -284,13 +319,13 @@ public partial class MainViewModel : ObservableObject
             {
                 task.Status = VideoTaskStatus.ExtractingAudio;
                 task.StatusText = Loc.StatusExtractingAudio;
-                task.Progress = 10;
+                task.Progress = 0;
             });
 
             stageSw.Restart();
             var extractProgress = new Progress<double>(p =>
             {
-                RunOnUi(() => task.Progress = 10 + (p * 0.25)); // 10% to 35%
+                RunOnUi(() => task.Progress = p * 0.10); // 0% to 10%
             });
 
             tempAudio = await AudioExtractorService.Instance.ExtractAudioAsync(
@@ -298,8 +333,10 @@ public partial class MainViewModel : ObservableObject
                 null, 
                 null, 
                 extractProgress, 
-                token,
+                taskToken,
                 outputDir: taskSandboxDir);
+
+            RunOnUi(() => task.Progress = 10);
 
             stageSw.Stop();
             double extractSec = stageSw.Elapsed.TotalSeconds;
@@ -311,15 +348,16 @@ public partial class MainViewModel : ObservableObject
             {
                 task.Status = VideoTaskStatus.Transcribing;
                 task.StatusText = Loc.StatusTranscribing;
-                task.Progress = 40;
+                task.Progress = 10;
             });
 
             stageSw.Restart();
             var transcriptionProgress = new Progress<double>(p =>
             {
-                RunOnUi(() => task.Progress = 40 + (p * 0.28)); // 40% to 68%
+                RunOnUi(() => task.Progress = p); // 20% to 75%
             });
 
+            string? transcriptionWarning = null;
             var rawSubtitles = await CliTranscriptionService.Instance.TranscribeAudioAsync(
                 tempAudio,
                 duration,
@@ -332,9 +370,13 @@ public partial class MainViewModel : ObservableObject
                 transcriptionProgress,
                 status =>
                 {
+                    if (status.Contains("⚠️") || status.Contains("未核验") || status.Contains("跳过"))
+                    {
+                        transcriptionWarning = status;
+                    }
                     RunOnUi(() => task.StatusText = status);
                 },
-                token);
+                taskToken);
 
             stageSw.Stop();
             double aiSec = stageSw.Elapsed.TotalSeconds;
@@ -347,7 +389,7 @@ public partial class MainViewModel : ObservableObject
             {
                 task.Status = VideoTaskStatus.Formatting;
                 task.StatusText = Loc.StatusFormatting;
-                task.Progress = 70;
+                task.Progress = 80;
             });
 
             stageSw.Restart();
@@ -379,7 +421,8 @@ public partial class MainViewModel : ObservableObject
                 modelName: settings.ModelName,
                 targetLanguage: settings.TargetLanguage,
                 totalDuration: task.Duration);
-            await File.WriteAllTextAsync(srtPath, srtContent, token);
+            await File.WriteAllTextAsync(srtPath, srtContent, taskToken);
+            createdSrtPath = srtPath;
 
             // Step 5: Output according to chosen OutputMode
             if (settings.OutputMode == OutputMode.SubtitleOnly)
@@ -393,7 +436,8 @@ public partial class MainViewModel : ObservableObject
                     modelName: settings.ModelName,
                     targetLanguage: settings.TargetLanguage,
                     totalDuration: task.Duration);
-                await File.WriteAllTextAsync(assPath, assContent, token);
+                await File.WriteAllTextAsync(assPath, assContent, taskToken);
+                createdAssPath = assPath;
                 RunOnUi(() => task.OutputPath = srtPath);
             }
             else if (settings.OutputMode == OutputMode.HardsubVideo)
@@ -402,7 +446,7 @@ public partial class MainViewModel : ObservableObject
                 {
                     task.Status = VideoTaskStatus.RenderingVideo;
                     task.StatusText = Loc.StatusRenderingVideo;
-                    task.Progress = 75;
+                    task.Progress = 80;
                 });
 
                 string outVideoPath = Path.Combine(outDir, $"{baseFileName}_subtitled{outVideoExt}");
@@ -418,11 +462,11 @@ public partial class MainViewModel : ObservableObject
                         modelName: settings.ModelName,
                         targetLanguage: settings.TargetLanguage,
                         totalDuration: task.Duration);
-                    await File.WriteAllTextAsync(tempSubFile, assContent, token);
+                    await File.WriteAllTextAsync(tempSubFile, assContent, taskToken);
 
                     var renderProgress = new Progress<double>(p =>
                     {
-                        RunOnUi(() => task.Progress = 75 + (p * 0.24)); // 75% to 99%
+                        RunOnUi(() => task.Progress = 80.0 + (p * 0.19)); // 80% to 99%
                     });
 
                     await VideoSynthesizerService.Instance.SynthesizeHardsubVideoAsync(
@@ -434,8 +478,9 @@ public partial class MainViewModel : ObservableObject
                         tempSubFile,
                         task.Duration,
                         renderProgress,
-                        token);
+                        taskToken);
 
+                    createdVideoPath = outVideoPath;
                     RunOnUi(() => task.OutputPath = outVideoPath);
                 }
                 finally
@@ -452,7 +497,7 @@ public partial class MainViewModel : ObservableObject
                 {
                     task.Status = VideoTaskStatus.RenderingVideo;
                     task.StatusText = Loc.StatusRenderingVideo;
-                    task.Progress = 75;
+                    task.Progress = 80;
                 });
 
                 string outVideoPath = Path.Combine(outDir, $"{baseFileName}_subtitled{outVideoExt}");
@@ -468,14 +513,15 @@ public partial class MainViewModel : ObservableObject
                         modelName: settings.ModelName,
                         targetLanguage: settings.TargetLanguage,
                         totalDuration: task.Duration);
-                    await File.WriteAllTextAsync(tempSubFile, assContent, token);
+                    await File.WriteAllTextAsync(tempSubFile, assContent, taskToken);
 
                     await VideoSynthesizerService.Instance.SynthesizeSoftsubAsync(
                         task.FilePath,
                         outVideoPath,
                         tempSubFile,
-                        token);
+                        taskToken);
 
+                    createdVideoPath = outVideoPath;
                     RunOnUi(() => task.OutputPath = outVideoPath);
                 }
                 finally
@@ -500,6 +546,10 @@ public partial class MainViewModel : ObservableObject
 
             totalSw.Stop();
             double totalSec = totalSw.Elapsed.TotalSeconds;
+            if (!string.IsNullOrEmpty(transcriptionWarning))
+            {
+                AppLogService.Instance.LogWarning($"[任务警告] 视频: {task.FileName} - {transcriptionWarning}");
+            }
             AppLogService.Instance.LogTaskComplete(task.FileName, totalSec, stageTimings, isSuccess: true, outputPath: task.OutputPath);
 
             RunOnUi(() =>
@@ -507,7 +557,14 @@ public partial class MainViewModel : ObservableObject
                 task.Stopwatch.Stop();
                 task.UpdateElapsed();
                 task.Status = VideoTaskStatus.Completed;
-                task.StatusText = $"{Loc.StatusCompleted} ({task.ElapsedTimeText})";
+                if (!string.IsNullOrEmpty(transcriptionWarning))
+                {
+                    task.StatusText = $"{Loc.StatusCompleted} ({task.ElapsedTimeText}, 阶段三部分跳过)";
+                }
+                else
+                {
+                    task.StatusText = $"{Loc.StatusCompleted} ({task.ElapsedTimeText})";
+                }
                 task.Progress = 100;
             });
         }
@@ -517,9 +574,9 @@ public partial class MainViewModel : ObservableObject
             AppLogService.Instance.LogTaskComplete(task.FileName, totalSw.Elapsed.TotalSeconds, stageTimings, isSuccess: false, error: "用户取消了任务");
             RunOnUi(() =>
             {
-                task.Status = VideoTaskStatus.Failed;
-                task.StatusText = Loc.StatusFailed;
-                task.ErrorMessage = "Operation was canceled.";
+                task.Status = VideoTaskStatus.Canceled;
+                task.StatusText = Loc.StatusCanceled;
+                task.ErrorMessage = null;
             });
         }
         catch (Exception ex)
@@ -536,6 +593,7 @@ public partial class MainViewModel : ObservableObject
         }
         finally
         {
+            task.Cts = null;
             RunOnUi(() =>
             {
                 task.Stopwatch.Stop();
@@ -544,7 +602,7 @@ public partial class MainViewModel : ObservableObject
 
             if (settings.IsDebugMode)
             {
-                AppLogService.Instance.LogInfo($"[调试模式] 任务完成，已保留临时沙盒与音频文件: {taskSandboxDir}");
+                AppLogService.Instance.LogInfo($"[调试模式] 任务结束，已保留临时沙盒与音频文件: {taskSandboxDir}");
             }
             else
             {
@@ -556,7 +614,25 @@ public partial class MainViewModel : ObservableObject
                 {
                     AudioExtractorService.Instance.CleanupDirectory(taskSandboxDir);
                 }
-                CliTranscriptionService.CleanupSessionConversations(taskStartTimeUtc);
+                CliTranscriptionService.CleanupSessionConversations(taskSandboxDir);
+
+                // If task was canceled or failed, clean up any partial output files
+                if (task.Status == VideoTaskStatus.Canceled || task.Status == VideoTaskStatus.Failed)
+                {
+                    if (!string.IsNullOrEmpty(createdSrtPath) && File.Exists(createdSrtPath))
+                    {
+                        try { File.Delete(createdSrtPath); } catch { }
+                    }
+                    if (!string.IsNullOrEmpty(createdAssPath) && File.Exists(createdAssPath))
+                    {
+                        try { File.Delete(createdAssPath); } catch { }
+                    }
+                    if (!string.IsNullOrEmpty(createdVideoPath) && File.Exists(createdVideoPath))
+                    {
+                        try { File.Delete(createdVideoPath); } catch { }
+                    }
+                }
+
                 AppLogService.Instance.LogInfo("[清理] 已彻底清理本次任务所有临时音频、沙盒与会话缓存。");
             }
         }

@@ -12,12 +12,6 @@ using SubtitleMaster.Services;
 
 namespace SubtitleMaster.ViewModels;
 
-public class AlignmentOption
-{
-    public int Value { get; set; }
-    public string Label { get; set; } = string.Empty;
-}
-
 public class ThinkingIntensityOption
 {
     public string Value { get; set; } = "high";
@@ -58,8 +52,6 @@ public partial class SettingsViewModel : ObservableObject
     };
 
     public List<ThinkingIntensityOption> AvailableThinkingIntensities { get; }
-
-    public List<AlignmentOption> AvailableAlignments { get; }
 
     public List<AnimationOption> AvailableAnimations { get; }
 
@@ -113,6 +105,14 @@ public partial class SettingsViewModel : ObservableObject
         ? "This is the original recognized secondary subtitle"
         : "这是自动识别的原语言副字幕对照效果";
 
+    public string SampleTopMainText => Loc.IsChinese
+        ? "这是同时说话的顶部字幕的效果测试"
+        : "This is a test of the simultaneous top subtitle effect";
+
+    public string SampleTopSubText => Loc.IsChinese
+        ? "This is the simultaneous top secondary subtitle"
+        : "这是同时说话的顶部原语言副字幕对照效果";
+
     public SettingsViewModel()
     {
         Settings = SettingsService.Instance.CurrentSettings;
@@ -122,14 +122,6 @@ public partial class SettingsViewModel : ObservableObject
             new() { Value = "high", Label = Loc.IntensityHigh },
             new() { Value = "medium", Label = Loc.IntensityMedium },
             new() { Value = "low", Label = Loc.IntensityLow }
-        ];
-
-        AvailableAlignments =
-        [
-            new() { Value = 2, Label = Loc.AlignBottomCenter },
-            new() { Value = 8, Label = Loc.AlignTopCenter },
-            new() { Value = 1, Label = Loc.AlignBottomLeft },
-            new() { Value = 3, Label = Loc.AlignBottomRight }
         ];
 
         AvailableAnimations =

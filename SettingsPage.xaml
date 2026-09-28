@@ -91,8 +91,8 @@
                         <!-- Segmentation Style -->
                         <StackPanel Spacing="8">
                             <TextBlock x:Name="SegmentationStyleLabelBlock" Text="Segmentation Style:" FontSize="13" FontWeight="Medium" />
-                            <RadioButton x:Name="SegDenseShortRadio" Content="Dense / Short sentences (Default, recommended for speeches/vlogs)" GroupName="SegStyleGroup" Checked="OnSegStyleChecked" />
-                            <RadioButton x:Name="SegSparseLongRadio" Content="Sparse / Long sentences (Continuous full sentences)" GroupName="SegStyleGroup" Checked="OnSegStyleChecked" />
+                            <RadioButton x:Name="SegStandardRadio" Content="Standard (Max 26 chars, autonomous segmentation - Default)" GroupName="SegStyleGroup" Checked="OnSegStyleChecked" />
+                            <RadioButton x:Name="SegShorterRadio" Content="Shorter (Max 13 chars, for short-form video &amp; large fonts)" GroupName="SegStyleGroup" Checked="OnSegStyleChecked" />
                         </StackPanel>
 
                         <!-- Translation Style Preference -->
@@ -116,8 +116,8 @@
                                       Header="Enable Secondary Subtitle (Original recognized speech as secondary line):"
                                       Toggled="OnSecondarySubToggled" />
 
-                        <!-- Target Language -->
-                        <StackPanel Spacing="6">
+                        <!-- Target Language: Temporarily hidden as software is dedicated to Chinese translation/transcription -->
+                        <StackPanel x:Name="TargetLangPanel" Spacing="6" Visibility="Collapsed">
                             <TextBlock x:Name="TargetLangLabelBlock" Text="Target Subtitle Language:" FontSize="13" FontWeight="Medium" />
                             <ComboBox x:Name="TargetLangComboBox" SelectionChanged="OnTargetLangChanged" MinWidth="220" />
                         </StackPanel>
@@ -175,6 +175,32 @@
                                                Stretch="Fill"
                                                IsHitTestVisible="False" />
 
+                                        <!-- Top Simultaneous Subtitle Presentation Container -->
+                                        <StackPanel x:Name="PreviewTopSubtitleContainer"
+                                                    VerticalAlignment="Top"
+                                                    HorizontalAlignment="Center"
+                                                    Margin="0,45,0,0"
+                                                    Spacing="0">
+                                            <Grid x:Name="PreviewTopMainGrid" HorizontalAlignment="Center">
+                                                <TextBlock x:Name="PreviewTopMainTextBlock"
+                                                           Text="这是同时说话的顶部字幕的效果测试"
+                                                           FontSize="68"
+                                                           FontWeight="Bold"
+                                                           HorizontalAlignment="Center"
+                                                           TextAlignment="Center"
+                                                           Foreground="#EDEDED" />
+                                            </Grid>
+                                            <Grid x:Name="PreviewTopSubGrid" HorizontalAlignment="Center">
+                                                <TextBlock x:Name="PreviewTopSubTextBlock"
+                                                           Text="This is the simultaneous top secondary subtitle"
+                                                           FontSize="48"
+                                                           FontWeight="Normal"
+                                                           HorizontalAlignment="Center"
+                                                           TextAlignment="Center"
+                                                           Foreground="#EDEDED" />
+                                            </Grid>
+                                        </StackPanel>
+
                                         <!-- Subtitle Presentation Container -->
                                         <StackPanel x:Name="PreviewSubtitleContainer"
                                                     VerticalAlignment="Bottom"
@@ -185,113 +211,51 @@
                                             <Grid x:Name="PreviewMainGrid" HorizontalAlignment="Center">
                                                 <TextBlock x:Name="PreviewMainTextBlock"
                                                            Text="这是生成的主字幕的效果测试"
-                                                           FontSize="54"
+                                                           FontSize="68"
                                                            FontWeight="Bold"
                                                            HorizontalAlignment="Center"
                                                            TextAlignment="Center"
-                                                           Foreground="#FFFFFF" />
+                                                           Foreground="#EDEDED" />
                                             </Grid>
 
                                             <!-- Secondary Source Subtitle -->
                                             <Grid x:Name="PreviewSubGrid" HorizontalAlignment="Center">
                                                 <TextBlock x:Name="PreviewSubTextBlock"
                                                            Text="This is the original recognized secondary subtitle"
-                                                           FontSize="37"
-                                                           FontWeight="Bold"
+                                                           FontSize="48"
+                                                           FontWeight="Normal"
                                                            HorizontalAlignment="Center"
                                                            TextAlignment="Center"
-                                                           Foreground="#FFD700" />
+                                                           Foreground="#EDEDED" />
                                             </Grid>
                                         </StackPanel>
                                 </Grid>
                             </Border>
                         </StackPanel>
 
-                        <!-- Style Parameters Grid -->
-                        <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnDefinitions="*,*">
-                            <!-- Row 0: Font Family & Font Size -->
+                        <!-- Style Parameters Grid (Logically Paired Layout) -->
+                        <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnDefinitions="*,*">
+                            <!-- Row 0: Primary Font Family & Secondary Font Family -->
                             <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,12,12" Spacing="6">
                                 <TextBlock x:Name="FontLabelBlock" Text="Font Family (All Installed System Fonts):" FontSize="13" />
                                 <ComboBox x:Name="FontFamilyComboBox" SelectionChanged="OnFontChanged" HorizontalAlignment="Stretch" />
                             </StackPanel>
 
                             <StackPanel Grid.Row="0" Grid.Column="1" Margin="12,0,0,12" Spacing="6">
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <TextBlock x:Name="FontSizeLabelBlock" Text="Font Size:" FontSize="13" />
-                                    <TextBlock Grid.Column="1" x:Name="FontSizeValBlock" Text="54 px" FontSize="13" FontWeight="SemiBold" />
-                                </Grid>
-                                <Slider x:Name="FontSizeSlider" Minimum="24" Maximum="96" Value="54" StepFrequency="1" ValueChanged="OnFontSizeChanged" />
+                                <TextBlock x:Name="SecondaryFontLabelBlock" Text="Secondary Font Family:" FontSize="13" />
+                                <ComboBox x:Name="SecondaryFontFamilyComboBox" SelectionChanged="OnSecondaryFontChanged" HorizontalAlignment="Stretch" />
                             </StackPanel>
 
-                            <!-- Row 1: Primary Color & Secondary Color -->
+                            <!-- Row 1: Primary Font Size & Secondary Font Scale -->
                             <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,12,12" Spacing="6">
-                                <TextBlock x:Name="PrimaryColorLabelBlock" Text="Primary Color (Hex):" FontSize="13" />
-                                <TextBox x:Name="PrimaryColorBox" Text="#FFFFFF" TextChanged="OnPrimaryColorChanged" />
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock x:Name="FontSizeLabelBlock" Text="Font Size:" FontSize="13" />
+                                    <TextBlock Grid.Column="1" x:Name="FontSizeValBlock" Text="68 px" FontSize="13" FontWeight="SemiBold" />
+                                </Grid>
+                                <Slider x:Name="FontSizeSlider" Minimum="24" Maximum="96" Value="68" StepFrequency="1" ValueChanged="OnFontSizeChanged" />
                             </StackPanel>
 
                             <StackPanel Grid.Row="1" Grid.Column="1" Margin="12,0,0,12" Spacing="6">
-                                <TextBlock x:Name="SecondaryColorLabelBlock" Text="Secondary Color (Hex):" FontSize="13" />
-                                <TextBox x:Name="SecondaryColorBox" Text="#FFD700" TextChanged="OnSecondaryColorChanged" />
-                            </StackPanel>
-
-                            <!-- Row 2: Font Style & Alignment -->
-                            <StackPanel Grid.Row="2" Grid.Column="0" Margin="0,0,12,12" Spacing="6">
-                                <TextBlock x:Name="FontStyleLabelBlock" Text="Font Style:" FontSize="13" />
-                                <StackPanel Orientation="Horizontal" Spacing="16" Margin="0,4,0,0">
-                                    <CheckBox x:Name="BoldCheckBox" Content="Bold" Checked="OnStyleOptionChanged" Unchecked="OnStyleOptionChanged" />
-                                    <CheckBox x:Name="ItalicCheckBox" Content="Italic" Checked="OnStyleOptionChanged" Unchecked="OnStyleOptionChanged" />
-                                </StackPanel>
-                            </StackPanel>
-
-                            <StackPanel Grid.Row="2" Grid.Column="1" Margin="12,0,0,12" Spacing="6">
-                                <TextBlock x:Name="AlignmentLabelBlock" Text="Subtitle Alignment:" FontSize="13" />
-                                <ComboBox x:Name="AlignmentComboBox" SelectionChanged="OnAlignmentChanged" HorizontalAlignment="Stretch" />
-                            </StackPanel>
-
-                            <!-- Row 3: Outline Width & Outline Color -->
-                            <StackPanel Grid.Row="3" Grid.Column="0" Margin="0,0,12,12" Spacing="6">
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <TextBlock x:Name="OutlineWidthLabelBlock" Text="Outline Width:" FontSize="13" />
-                                    <TextBlock Grid.Column="1" x:Name="OutlineWidthValBlock" Text="2.8" FontSize="13" FontWeight="SemiBold" />
-                                </Grid>
-                                <Slider x:Name="OutlineWidthSlider" Minimum="0" Maximum="6" StepFrequency="0.2" Value="2.8" ValueChanged="OnOutlineWidthChanged" />
-                            </StackPanel>
-
-                            <StackPanel Grid.Row="3" Grid.Column="1" Margin="12,0,0,12" Spacing="6">
-                                <TextBlock x:Name="OutlineColorLabelBlock" Text="Outline Color (Hex):" FontSize="13" />
-                                <TextBox x:Name="OutlineColorBox" Text="#000000" TextChanged="OnOutlineColorChanged" />
-                            </StackPanel>
-
-                            <!-- Row 4: Shadow Depth & Shadow Color -->
-                            <StackPanel Grid.Row="4" Grid.Column="0" Margin="0,0,12,12" Spacing="6">
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <TextBlock x:Name="ShadowDepthLabelBlock" Text="Shadow Depth:" FontSize="13" />
-                                    <TextBlock Grid.Column="1" x:Name="ShadowDepthValBlock" Text="1.5" FontSize="13" FontWeight="SemiBold" />
-                                </Grid>
-                                <Slider x:Name="ShadowDepthSlider" Minimum="0" Maximum="6" StepFrequency="0.2" Value="1.5" ValueChanged="OnShadowDepthChanged" />
-                            </StackPanel>
-
-                            <StackPanel Grid.Row="4" Grid.Column="1" Margin="12,0,0,12" Spacing="6">
-                                <TextBlock x:Name="ShadowColorLabelBlock" Text="Shadow Color (Hex):" FontSize="13" />
-                                <TextBox x:Name="ShadowColorBox" Text="#66000000" TextChanged="OnShadowColorChanged" />
-                            </StackPanel>
-
-                            <!-- Row 5: Animation Preset & Animation Speed -->
-                            <StackPanel Grid.Row="5" Grid.Column="0" Margin="0,0,12,12" Spacing="6">
-                                <TextBlock x:Name="AnimationPresetLabelBlock" Text="Animation Preset:" FontSize="13" />
-                                <ComboBox x:Name="AnimationComboBox" SelectionChanged="OnAnimationChanged" HorizontalAlignment="Stretch" />
-                            </StackPanel>
-
-                            <StackPanel Grid.Row="5" Grid.Column="1" Margin="12,0,0,12" Spacing="6">
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <TextBlock x:Name="AnimationSpeedLabelBlock" Text="Animation Speed:" FontSize="13" />
-                                    <TextBlock Grid.Column="1" x:Name="AnimationSpeedValBlock" Text="1.0x" FontSize="13" FontWeight="SemiBold" />
-                                </Grid>
-                                <Slider x:Name="AnimationSpeedSlider" Minimum="0.5" Maximum="2.5" StepFrequency="0.1" Value="1.0" ValueChanged="OnAnimationSpeedChanged" />
-                            </StackPanel>
-
-                            <!-- Row 6: Secondary Subtitle Scale & Letter Spacing -->
-                            <StackPanel Grid.Row="6" Grid.Column="0" Margin="0,0,12,12" Spacing="6">
                                 <Grid ColumnDefinitions="*,Auto">
                                     <TextBlock x:Name="SecondaryScaleLabelBlock" Text="Secondary Scale:" FontSize="13" />
                                     <TextBlock Grid.Column="1" x:Name="SecondaryScaleValBlock" Text="70%" FontSize="13" FontWeight="SemiBold" />
@@ -299,7 +263,27 @@
                                 <Slider x:Name="SecondaryScaleSlider" Minimum="50" Maximum="100" StepFrequency="5" Value="70" ValueChanged="OnSecondaryScaleChanged" />
                             </StackPanel>
 
-                            <StackPanel Grid.Row="6" Grid.Column="1" Margin="12,0,0,12" Spacing="6">
+                            <!-- Row 2: Primary Color & Secondary Color -->
+                            <StackPanel Grid.Row="2" Grid.Column="0" Margin="0,0,12,12" Spacing="6">
+                                <TextBlock x:Name="PrimaryColorLabelBlock" Text="Primary Color (Hex):" FontSize="13" />
+                                <TextBox x:Name="PrimaryColorBox" Text="#EDEDED" TextChanged="OnPrimaryColorChanged" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="2" Grid.Column="1" Margin="12,0,0,12" Spacing="6">
+                                <TextBlock x:Name="SecondaryColorLabelBlock" Text="Secondary Color (Hex):" FontSize="13" />
+                                <TextBox x:Name="SecondaryColorBox" Text="#EDEDED" TextChanged="OnSecondaryColorChanged" />
+                            </StackPanel>
+
+                            <!-- Row 3: Font Style & Letter Spacing -->
+                            <StackPanel Grid.Row="3" Grid.Column="0" Margin="0,0,12,12" Spacing="6">
+                                <TextBlock x:Name="FontStyleLabelBlock" Text="Font Style:" FontSize="13" />
+                                <StackPanel Orientation="Horizontal" Spacing="16" Margin="0,4,0,0">
+                                    <CheckBox x:Name="BoldCheckBox" Content="Bold" IsChecked="True" Checked="OnStyleOptionChanged" Unchecked="OnStyleOptionChanged" />
+                                    <CheckBox x:Name="ItalicCheckBox" Content="Italic" Checked="OnStyleOptionChanged" Unchecked="OnStyleOptionChanged" />
+                                </StackPanel>
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="3" Grid.Column="1" Margin="12,0,0,12" Spacing="6">
                                 <Grid ColumnDefinitions="*,Auto">
                                     <TextBlock x:Name="LetterSpacingLabelBlock" Text="Letter Spacing:" FontSize="13" />
                                     <TextBlock Grid.Column="1" x:Name="LetterSpacingValBlock" Text="0.0" FontSize="13" FontWeight="SemiBold" />
@@ -307,13 +291,128 @@
                                 <Slider x:Name="LetterSpacingSlider" Minimum="0" Maximum="10" StepFrequency="0.5" Value="0" ValueChanged="OnLetterSpacingChanged" />
                             </StackPanel>
 
-                            <!-- Row 7: Bottom Margin (MarginV) -->
-                            <StackPanel Grid.Row="7" Grid.Column="0" Margin="0,0,12,0" Spacing="6">
+                            <!-- Row 4: Outline Width & Outline Color -->
+                            <StackPanel Grid.Row="4" Grid.Column="0" Margin="0,0,12,12" Spacing="6">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock x:Name="OutlineWidthLabelBlock" Text="Outline Width:" FontSize="13" />
+                                    <TextBlock Grid.Column="1" x:Name="OutlineWidthValBlock" Text="2.0" FontSize="13" FontWeight="SemiBold" />
+                                </Grid>
+                                <Slider x:Name="OutlineWidthSlider" Minimum="0" Maximum="6" StepFrequency="0.2" Value="2.0" ValueChanged="OnOutlineWidthChanged" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="4" Grid.Column="1" Margin="12,0,0,12" Spacing="6">
+                                <TextBlock x:Name="OutlineColorLabelBlock" Text="Outline Color (Hex):" FontSize="13" />
+                                <TextBox x:Name="OutlineColorBox" Text="#000000" TextChanged="OnOutlineColorChanged" />
+                            </StackPanel>
+
+                            <!-- Row 5: Shadow Depth & Shadow Color -->
+                            <StackPanel Grid.Row="5" Grid.Column="0" Margin="0,0,12,12" Spacing="6">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock x:Name="ShadowDepthLabelBlock" Text="Shadow Depth:" FontSize="13" />
+                                    <TextBlock Grid.Column="1" x:Name="ShadowDepthValBlock" Text="1.5" FontSize="13" FontWeight="SemiBold" />
+                                </Grid>
+                                <Slider x:Name="ShadowDepthSlider" Minimum="0" Maximum="6" StepFrequency="0.2" Value="1.5" ValueChanged="OnShadowDepthChanged" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="5" Grid.Column="1" Margin="12,0,0,12" Spacing="6">
+                                <TextBlock x:Name="ShadowColorLabelBlock" Text="Shadow Color (Hex):" FontSize="13" />
+                                <TextBox x:Name="ShadowColorBox" Text="#66000000" TextChanged="OnShadowColorChanged" />
+                            </StackPanel>
+
+                            <!-- Row 6: Edge Softening (EdgeBlur) -->
+                            <StackPanel Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,0,12" Spacing="6">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock x:Name="EdgeBlurLabelBlock" Text="Edge Softening:" FontSize="13" />
+                                    <TextBlock Grid.Column="1" x:Name="EdgeBlurValBlock" Text="1.0" FontSize="13" FontWeight="SemiBold" />
+                                </Grid>
+                                <Slider x:Name="EdgeBlurSlider" Minimum="0" Maximum="5" StepFrequency="0.5" Value="1.0" ValueChanged="OnEdgeBlurChanged" />
+                            </StackPanel>
+
+                            <!-- Row 7: Animation Preset & Animation Speed -->
+                            <StackPanel Grid.Row="7" Grid.Column="0" Margin="0,0,12,12" Spacing="6">
+                                <TextBlock x:Name="AnimationPresetLabelBlock" Text="Animation Preset:" FontSize="13" />
+                                <ComboBox x:Name="AnimationComboBox" SelectionChanged="OnAnimationChanged" HorizontalAlignment="Stretch" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="7" Grid.Column="1" Margin="12,0,0,12" Spacing="6">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock x:Name="AnimationSpeedLabelBlock" Text="Animation Speed:" FontSize="13" />
+                                    <TextBlock Grid.Column="1" x:Name="AnimationSpeedValBlock" Text="2.0x" FontSize="13" FontWeight="SemiBold" />
+                                </Grid>
+                                <Slider x:Name="AnimationSpeedSlider" Minimum="0.5" Maximum="2.5" StepFrequency="0.1" Value="2.0" ValueChanged="OnAnimationSpeedChanged" />
+                            </StackPanel>
+
+                            <!-- Row 8: Bottom Margin (MarginV) & Subtitle Spacing -->
+                            <StackPanel Grid.Row="8" Grid.Column="0" Margin="0,0,12,0" Spacing="6">
                                 <Grid ColumnDefinitions="*,Auto">
                                     <TextBlock x:Name="MarginVLabelBlock" Text="Bottom Margin:" FontSize="13" />
                                     <TextBlock Grid.Column="1" x:Name="MarginVValBlock" Text="45 px" FontSize="13" FontWeight="SemiBold" />
                                 </Grid>
                                 <Slider x:Name="MarginVSlider" Minimum="10" Maximum="120" StepFrequency="5" Value="45" ValueChanged="OnMarginVChanged" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="8" Grid.Column="1" Margin="12,0,0,0" Spacing="6">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock x:Name="SubSpacingLabelBlock" Text="Subtitle Spacing:" FontSize="13" />
+                                    <TextBlock Grid.Column="1" x:Name="SubSpacingValBlock" Text="0 px" FontSize="13" FontWeight="SemiBold" />
+                                </Grid>
+                                <Slider x:Name="SubSpacingSlider" Minimum="0" Maximum="40" StepFrequency="2" Value="0" ValueChanged="OnSubSpacingChanged" />
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- SECTION 4: About -->
+                <Border CornerRadius="8"
+                        Padding="20,18"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1">
+                    <StackPanel Spacing="16">
+                        <TextBlock x:Name="AboutSectionTitleBlock" Text="4. 关于" FontSize="16" FontWeight="SemiBold" />
+
+                        <!-- Windows 11 Fluent Card Pattern: Left Branding & Right Unified Actions -->
+                        <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                            <!-- Left: App Identity (App Icon + Name + Version Badge + Author) -->
+                            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                <Image x:Name="AboutAppIcon" Width="32" Height="32" VerticalAlignment="Center" Stretch="Uniform" />
+                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <TextBlock x:Name="AboutAppTitleBlock" Text="灵幕助手" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                    <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="4"
+                                            Padding="6,2"
+                                            VerticalAlignment="Center">
+                                        <TextBlock x:Name="AboutVersionBlock" Text="V2.0" FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                    </Border>
+                                    <TextBlock x:Name="AboutAuthorBlock" Text="by 风ノ夏" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Margin="2,0,0,0" />
+                                </StackPanel>
+                            </StackPanel>
+
+                            <!-- Right: Cohesive Button Group (Equal Width 130, Height 34, Spacing 10) -->
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                <Button x:Name="OpenHomeBtn" Click="OnOpenHomeClicked" Width="130" Height="34" VerticalAlignment="Center"
+                                        ToolTipService.ToolTip="https://space.bilibili.com/1923558499">
+                                    <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                                        <FontIcon Glyph="&#xE80F;" FontSize="13" />
+                                        <TextBlock x:Name="HomeBtnLabel" Text="bilibili主页" FontSize="12.5" />
+                                    </StackPanel>
+                                </Button>
+                                <Button x:Name="OpenReleasesBtn" Click="OnOpenReleasesClicked" Width="130" Height="34" VerticalAlignment="Center"
+                                        ToolTipService.ToolTip="https://github.com/ZX8592/LingMuCaption/releases">
+                                    <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                                        <FontIcon Glyph="&#xE774;" FontSize="13" />
+                                        <TextBlock x:Name="ReleasesBtnLabel" Text="github发布页" FontSize="12.5" />
+                                    </StackPanel>
+                                </Button>
+                                <Button x:Name="OpenFeedbackBtn" Click="OnOpenFeedbackClicked" Width="130" Height="34" VerticalAlignment="Center"
+                                        ToolTipService.ToolTip="https://github.com/ZX8592/LingMuCaption/issues">
+                                    <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                                        <FontIcon Glyph="&#xE939;" FontSize="13" />
+                                        <TextBlock x:Name="FeedbackBtnLabel" Text="问题反馈" FontSize="12.5" />
+                                    </StackPanel>
+                                </Button>
                             </StackPanel>
                         </Grid>
                     </StackPanel>
@@ -350,6 +449,32 @@
                            Stretch="Fill"
                            IsHitTestVisible="False" />
 
+                    <!-- Fullscreen Top Simultaneous Subtitle Presentation Container -->
+                    <StackPanel x:Name="FsTopSubtitleContainer"
+                                VerticalAlignment="Top"
+                                HorizontalAlignment="Center"
+                                Margin="0,45,0,0"
+                                Spacing="0">
+                        <Grid x:Name="FsTopMainGrid" HorizontalAlignment="Center">
+                            <TextBlock x:Name="FsTopMainTextBlock"
+                                       Text="这是同时说话的顶部字幕的效果测试"
+                                       FontSize="68"
+                                       FontWeight="Bold"
+                                       HorizontalAlignment="Center"
+                                       TextAlignment="Center"
+                                       Foreground="#EDEDED" />
+                        </Grid>
+                        <Grid x:Name="FsTopSubGrid" HorizontalAlignment="Center">
+                            <TextBlock x:Name="FsTopSubTextBlock"
+                                       Text="This is the simultaneous top secondary subtitle"
+                                       FontSize="48"
+                                       FontWeight="Normal"
+                                       HorizontalAlignment="Center"
+                                       TextAlignment="Center"
+                                       Foreground="#EDEDED" />
+                        </Grid>
+                    </StackPanel>
+
                     <!-- Fullscreen Subtitle Presentation Container -->
                     <StackPanel x:Name="FsSubtitleContainer"
                                 VerticalAlignment="Bottom"
@@ -360,22 +485,22 @@
                         <Grid x:Name="FsMainGrid" HorizontalAlignment="Center">
                             <TextBlock x:Name="FsMainTextBlock"
                                        Text="这是生成的主字幕的效果测试"
-                                       FontSize="54"
+                                       FontSize="68"
                                        FontWeight="Bold"
                                        HorizontalAlignment="Center"
                                        TextAlignment="Center"
-                                       Foreground="#FFFFFF" />
+                                       Foreground="#EDEDED" />
                         </Grid>
 
                         <!-- Fullscreen Secondary Subtitle -->
                         <Grid x:Name="FsSubGrid" HorizontalAlignment="Center">
                             <TextBlock x:Name="FsSubTextBlock"
                                        Text="This is the original recognized secondary subtitle"
-                                       FontSize="37"
-                                       FontWeight="Bold"
+                                       FontSize="48"
+                                       FontWeight="Normal"
                                        HorizontalAlignment="Center"
                                        TextAlignment="Center"
-                                       Foreground="#FFD700" />
+                                       Foreground="#EDEDED" />
                         </Grid>
                     </StackPanel>
                 </Grid>

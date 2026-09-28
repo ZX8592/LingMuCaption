@@ -168,7 +168,7 @@ public static class SilentProcessRunner
 
         // Build command line
         string commandLine = BuildCommandLine(options.FileName, options.Arguments, options.ArgumentList);
-        uint creationFlags = DETACHED_PROCESS | CREATE_NO_WINDOW;
+        uint creationFlags = CREATE_NO_WINDOW;
 
         // Apply custom environment variables if any
         if (options.EnvironmentVariables != null)
