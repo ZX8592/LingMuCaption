@@ -319,22 +319,13 @@
                                 <TextBox x:Name="ShadowColorBox" Text="#66000000" TextChanged="OnShadowColorChanged" />
                             </StackPanel>
 
-                            <!-- Row 6: Edge Softening (EdgeBlur) -->
-                            <StackPanel Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,0,12" Spacing="6">
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <TextBlock x:Name="EdgeBlurLabelBlock" Text="Edge Softening:" FontSize="13" />
-                                    <TextBlock Grid.Column="1" x:Name="EdgeBlurValBlock" Text="1.0" FontSize="13" FontWeight="SemiBold" />
-                                </Grid>
-                                <Slider x:Name="EdgeBlurSlider" Minimum="0" Maximum="5" StepFrequency="0.5" Value="1.0" ValueChanged="OnEdgeBlurChanged" />
-                            </StackPanel>
-
-                            <!-- Row 7: Animation Preset & Animation Speed -->
-                            <StackPanel Grid.Row="7" Grid.Column="0" Margin="0,0,12,12" Spacing="6">
+                            <!-- Row 6: Animation Preset & Animation Speed -->
+                            <StackPanel Grid.Row="6" Grid.Column="0" Margin="0,0,12,12" Spacing="6">
                                 <TextBlock x:Name="AnimationPresetLabelBlock" Text="Animation Preset:" FontSize="13" />
                                 <ComboBox x:Name="AnimationComboBox" SelectionChanged="OnAnimationChanged" HorizontalAlignment="Stretch" />
                             </StackPanel>
 
-                            <StackPanel Grid.Row="7" Grid.Column="1" Margin="12,0,0,12" Spacing="6">
+                            <StackPanel Grid.Row="6" Grid.Column="1" Margin="12,0,0,12" Spacing="6">
                                 <Grid ColumnDefinitions="*,Auto">
                                     <TextBlock x:Name="AnimationSpeedLabelBlock" Text="Animation Speed:" FontSize="13" />
                                     <TextBlock Grid.Column="1" x:Name="AnimationSpeedValBlock" Text="2.0x" FontSize="13" FontWeight="SemiBold" />
@@ -342,8 +333,8 @@
                                 <Slider x:Name="AnimationSpeedSlider" Minimum="0.5" Maximum="2.5" StepFrequency="0.1" Value="2.0" ValueChanged="OnAnimationSpeedChanged" />
                             </StackPanel>
 
-                            <!-- Row 8: Bottom Margin (MarginV) & Subtitle Spacing -->
-                            <StackPanel Grid.Row="8" Grid.Column="0" Margin="0,0,12,0" Spacing="6">
+                            <!-- Row 7: Bottom Margin (MarginV) & Subtitle Spacing -->
+                            <StackPanel Grid.Row="7" Grid.Column="0" Margin="0,0,12,12" Spacing="6">
                                 <Grid ColumnDefinitions="*,Auto">
                                     <TextBlock x:Name="MarginVLabelBlock" Text="Bottom Margin:" FontSize="13" />
                                     <TextBlock Grid.Column="1" x:Name="MarginVValBlock" Text="45 px" FontSize="13" FontWeight="SemiBold" />
@@ -351,12 +342,26 @@
                                 <Slider x:Name="MarginVSlider" Minimum="10" Maximum="120" StepFrequency="5" Value="45" ValueChanged="OnMarginVChanged" />
                             </StackPanel>
 
-                            <StackPanel Grid.Row="8" Grid.Column="1" Margin="12,0,0,0" Spacing="6">
+                            <StackPanel Grid.Row="7" Grid.Column="1" Margin="12,0,0,12" Spacing="6">
                                 <Grid ColumnDefinitions="*,Auto">
                                     <TextBlock x:Name="SubSpacingLabelBlock" Text="Subtitle Spacing:" FontSize="13" />
                                     <TextBlock Grid.Column="1" x:Name="SubSpacingValBlock" Text="0 px" FontSize="13" FontWeight="SemiBold" />
                                 </Grid>
                                 <Slider x:Name="SubSpacingSlider" Minimum="0" Maximum="40" StepFrequency="2" Value="0" ValueChanged="OnSubSpacingChanged" />
+                            </StackPanel>
+
+                            <!-- Row 8 (Bottom Row): Edge Softening (Left) & Custom ASS Style Config Dropdown (Right) -->
+                            <StackPanel Grid.Row="8" Grid.Column="0" Margin="0,0,12,0" Spacing="6">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock x:Name="EdgeBlurLabelBlock" Text="Edge Softening:" FontSize="13" />
+                                    <TextBlock Grid.Column="1" x:Name="EdgeBlurValBlock" Text="1.0" FontSize="13" FontWeight="SemiBold" />
+                                </Grid>
+                                <Slider x:Name="EdgeBlurSlider" Minimum="0" Maximum="5" StepFrequency="0.5" Value="1.0" ValueChanged="OnEdgeBlurChanged" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="8" Grid.Column="1" Margin="12,0,0,0" Spacing="6">
+                                <TextBlock x:Name="CustomAssLabelBlock" Text="自定义样式配置文件 (.ass)：" FontSize="13" />
+                                <ComboBox x:Name="CustomAssComboBox" SelectionChanged="OnCustomAssChanged" DropDownOpened="OnCustomAssDropDownOpened" HorizontalAlignment="Stretch" />
                             </StackPanel>
                         </Grid>
                     </StackPanel>
@@ -384,7 +389,7 @@
                                             CornerRadius="4"
                                             Padding="6,2"
                                             VerticalAlignment="Center">
-                                        <TextBlock x:Name="AboutVersionBlock" Text="V2.0" FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                        <TextBlock x:Name="AboutVersionBlock" Text="V2.1" FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
                                     </Border>
                                     <TextBlock x:Name="AboutAuthorBlock" Text="by 风ノ夏" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Margin="2,0,0,0" />
                                 </StackPanel>

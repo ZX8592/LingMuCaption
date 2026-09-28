@@ -61,19 +61,26 @@ public class SubtitleFormatterService
             throw new InvalidOperationException("All subtitle items had empty text.");
         }
 
-        // Sort chronologically (if start times are identical, put longer utterance first so it stays on the bottom track)
+        // Sort chronologically (if start times are identical, put primary entry first, then longer utterance)
         valid = valid
             .OrderBy(x => x.StartTime)
+            .ThenByDescending(x => x.IsPrimary == true ? 1 : (x.IsPrimary == false ? -1 : 0))
             .ThenByDescending(x => x.EndTime - x.StartTime)
             .ToList();
 
         // Dual-Track Interval Scheduler:
-        // Assign genuine simultaneous multi-speaker overlaps to the Top Track (IsTopTrack = true)
-        // while keeping normal sequential dialogue and minor turn-taking collisions on the Bottom Track (IsTopTrack = false).
+        // Assign genuine simultaneous multi-speaker overlaps or secondary/lyric tracks (IsPrimary == false) to the Top Track (IsTopTrack = true)
+        // while keeping primary foreground dialogue (IsPrimary == true) on the Bottom Track (IsTopTrack = false).
         SubtitleItem? activeBottom = null;
         foreach (var item in valid)
         {
             item.IsTopTrack = false;
+
+            if (item.IsPrimary == false)
+            {
+                item.IsTopTrack = true;
+                continue;
+            }
 
             if (activeBottom != null && item.StartTime < activeBottom.EndTime)
             {
@@ -95,7 +102,16 @@ public class SubtitleFormatterService
 
                 if (isGenuineDualSpeaker)
                 {
-                    item.IsTopTrack = true;
+                    if (item.IsPrimary == true && activeBottom.IsPrimary != true)
+                    {
+                        // Move the earlier non-primary entry to Top Track so the explicitly primary dialogue stays on Bottom Track
+                        activeBottom.IsTopTrack = true;
+                        activeBottom = item;
+                    }
+                    else
+                    {
+                        item.IsTopTrack = true;
+                    }
                     continue;
                 }
             }
@@ -461,6 +477,7 @@ public class SubtitleFormatterService
 
     /// <summary>
     /// Generates ASS (Advanced SubStation Alpha) styled effect subtitle content.
+    /// If config.CustomAssFileName is set and resolves to a valid .ass file, overrides built-in style generation with that template.
     /// </summary>
     public string GenerateAssContent(
         List<SubtitleItem> items, 
@@ -471,6 +488,30 @@ public class SubtitleFormatterService
         string? targetLanguage = null,
         TimeSpan? totalDuration = null)
     {
+        if (!string.IsNullOrWhiteSpace(config.CustomAssFileName))
+        {
+            string? customTemplatePath = FilePathHelper.ResolveAssTemplatePath(config.CustomAssFileName);
+            if (!string.IsNullOrEmpty(customTemplatePath) && File.Exists(customTemplatePath))
+            {
+                try
+                {
+                    return GenerateAssFromCustomTemplate(
+                        items,
+                        customTemplatePath,
+                        config,
+                        includeSecondary,
+                        showWatermark,
+                        modelName,
+                        targetLanguage,
+                        totalDuration);
+                }
+                catch (Exception ex)
+                {
+                    AppLogService.Instance.LogWarning($"[ASS模板] 解析自定义字幕样式文件 ({config.CustomAssFileName}) 失败，已回退至内置配置: {ex.Message}");
+                }
+            }
+        }
+
         var sb = new StringBuilder();
 
         // 1. Script Info
@@ -741,5 +782,400 @@ public class SubtitleFormatterService
     {
         if (string.IsNullOrEmpty(text)) return string.Empty;
         return text.Replace("{", "(").Replace("}", ")").Replace("\r\n", "\\N").Replace("\n", "\\N");
+    }
+
+    public static string AssColorToHex(string assColor, string fallback = "#EDEDED")
+    {
+        if (string.IsNullOrWhiteSpace(assColor)) return fallback;
+        string s = assColor.Trim().TrimEnd('&');
+        if (s.StartsWith("&H", StringComparison.OrdinalIgnoreCase))
+        {
+            s = s.Substring(2);
+        }
+        else if (s.StartsWith("H", StringComparison.OrdinalIgnoreCase))
+        {
+            s = s.Substring(1);
+        }
+
+        try
+        {
+            if (s.Length == 6)
+            {
+                byte b = byte.Parse(s.Substring(0, 2), NumberStyles.HexNumber);
+                byte g = byte.Parse(s.Substring(2, 2), NumberStyles.HexNumber);
+                byte r = byte.Parse(s.Substring(4, 2), NumberStyles.HexNumber);
+                return $"#{r:X2}{g:X2}{b:X2}";
+            }
+            else if (s.Length == 8)
+            {
+                byte assA = byte.Parse(s.Substring(0, 2), NumberStyles.HexNumber);
+                byte a = (byte)(255 - assA);
+                byte b = byte.Parse(s.Substring(2, 2), NumberStyles.HexNumber);
+                byte g = byte.Parse(s.Substring(4, 2), NumberStyles.HexNumber);
+                byte r = byte.Parse(s.Substring(6, 2), NumberStyles.HexNumber);
+                return a == 255 ? $"#{r:X2}{g:X2}{b:X2}" : $"#{a:X2}{r:X2}{g:X2}{b:X2}";
+            }
+        }
+        catch { }
+
+        return fallback;
+    }
+
+    /// <summary>
+    /// Returns an EffectSubtitleConfig reflecting the selected custom .ass file's parameters (for UI/GDI+ fallback preview),
+    /// or the original config if "当前配置" is active.
+    /// </summary>
+    public EffectSubtitleConfig GetEffectivePreviewConfig(EffectSubtitleConfig config)
+    {
+        if (string.IsNullOrWhiteSpace(config.CustomAssFileName)) return config;
+        string? customPath = FilePathHelper.ResolveAssTemplatePath(config.CustomAssFileName);
+        if (string.IsNullOrEmpty(customPath) || !File.Exists(customPath)) return config;
+
+        try
+        {
+            string content = File.ReadAllText(customPath, Encoding.UTF8);
+            var lines = content.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+            string[]? mainFields = null;
+            string[]? secFields = null;
+
+            foreach (var rawLine in lines)
+            {
+                string line = rawLine.Trim();
+                if (!line.StartsWith("Style:", StringComparison.OrdinalIgnoreCase)) continue;
+                string body = line.Substring(6).Trim();
+                var parts = body.Split(',');
+                if (parts.Length < 22) continue;
+
+                string styleName = parts[0].Trim();
+                if (string.Equals(styleName, "Watermark", StringComparison.OrdinalIgnoreCase) ||
+                    styleName.StartsWith("Top", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (string.Equals(styleName, "Default", StringComparison.OrdinalIgnoreCase))
+                {
+                    mainFields = parts;
+                }
+                else if (string.Equals(styleName, "Secondary", StringComparison.OrdinalIgnoreCase))
+                {
+                    secFields = parts;
+                }
+                else if (mainFields == null)
+                {
+                    mainFields = parts;
+                }
+                else if (secFields == null)
+                {
+                    secFields = parts;
+                }
+            }
+
+            if (mainFields == null) return config;
+
+            var derived = new EffectSubtitleConfig
+            {
+                CustomAssFileName = config.CustomAssFileName,
+                FontName = mainFields[1].Trim(),
+                FontSize = int.TryParse(mainFields[2].Trim(), out int fs) ? fs : config.FontSize,
+                PrimaryColor = AssColorToHex(mainFields[3].Trim(), config.PrimaryColor),
+                OutlineColor = AssColorToHex(mainFields[5].Trim(), config.OutlineColor),
+                ShadowColor = AssColorToHex(mainFields[6].Trim(), config.ShadowColor),
+                Bold = mainFields[7].Trim() != "0",
+                Italic = mainFields[8].Trim() != "0",
+                LetterSpacing = double.TryParse(mainFields[13].Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out double sp) ? sp : 0,
+                OutlineWidth = double.TryParse(mainFields[16].Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out double ow) ? ow : config.OutlineWidth,
+                ShadowDepth = double.TryParse(mainFields[17].Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out double sd) ? sd : config.ShadowDepth,
+                Alignment = int.TryParse(mainFields[18].Trim(), out int al) ? al : 2,
+                MarginL = int.TryParse(mainFields[19].Trim(), out int ml) ? ml : 30,
+                MarginR = int.TryParse(mainFields[20].Trim(), out int mr) ? mr : 30,
+                MarginV = int.TryParse(mainFields[21].Trim(), out int mv) ? mv : config.MarginV,
+                EdgeBlur = 1.0
+            };
+
+            if (secFields != null)
+            {
+                derived.SecondaryFontName = secFields[1].Trim();
+                derived.SecondaryColor = AssColorToHex(secFields[3].Trim(), derived.PrimaryColor);
+                if (int.TryParse(secFields[2].Trim(), out int secFs) && derived.FontSize > 0)
+                {
+                    derived.SecondaryScale = Math.Clamp((double)secFs / derived.FontSize, 0.3, 1.2);
+                }
+            }
+            else
+            {
+                derived.SecondaryFontName = derived.FontName;
+                derived.SecondaryColor = derived.PrimaryColor;
+                derived.SecondaryScale = 0.70;
+            }
+
+            return derived;
+        }
+        catch
+        {
+            return config;
+        }
+    }
+
+    private string GenerateAssFromCustomTemplate(
+        List<SubtitleItem> items,
+        string templatePath,
+        EffectSubtitleConfig fallbackConfig,
+        bool includeSecondary,
+        bool showWatermark,
+        string? modelName,
+        string? targetLanguage,
+        TimeSpan? totalDuration)
+    {
+        string content = File.ReadAllText(templatePath, Encoding.UTF8);
+        var rawLines = content.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+
+        var scriptInfoLines = new List<string>();
+        var styleLines = new List<(string Name, string[] Fields, string RawLine)>();
+        string styleFormatLine = "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding";
+        var sampleDialogueTexts = new List<(string Style, string Text)>();
+
+        string currentSection = "";
+        foreach (var raw in rawLines)
+        {
+            string trimmed = raw.Trim();
+            if (trimmed.StartsWith("[") && trimmed.EndsWith("]"))
+            {
+                currentSection = trimmed;
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(trimmed) || trimmed.StartsWith(";"))
+            {
+                continue;
+            }
+
+            if (string.Equals(currentSection, "[Script Info]", StringComparison.OrdinalIgnoreCase))
+            {
+                scriptInfoLines.Add(trimmed);
+            }
+            else if (string.Equals(currentSection, "[V4+ Styles]", StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(currentSection, "[V4 Styles]", StringComparison.OrdinalIgnoreCase))
+            {
+                if (trimmed.StartsWith("Format:", StringComparison.OrdinalIgnoreCase))
+                {
+                    styleFormatLine = trimmed;
+                }
+                else if (trimmed.StartsWith("Style:", StringComparison.OrdinalIgnoreCase))
+                {
+                    string body = trimmed.Substring(6).Trim();
+                    var parts = body.Split(',');
+                    if (parts.Length >= 22)
+                    {
+                        string sName = parts[0].Trim();
+                        styleLines.Add((sName, parts, trimmed));
+                    }
+                }
+            }
+            else if (string.Equals(currentSection, "[Events]", StringComparison.OrdinalIgnoreCase))
+            {
+                if (trimmed.StartsWith("Dialogue:", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Dialogue has 10 fields: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+                    string body = trimmed.Substring(9).Trim();
+                    var parts = body.Split(',', 10);
+                    if (parts.Length == 10)
+                    {
+                        sampleDialogueTexts.Add((parts[3].Trim(), parts[9]));
+                    }
+                }
+            }
+        }
+
+        if (styleLines.Count == 0)
+        {
+            throw new InvalidOperationException("No valid [V4+ Styles] Style definitions found in custom .ass file.");
+        }
+
+        var sb = new StringBuilder();
+
+        // 1. Write [Script Info]
+        sb.AppendLine("[Script Info]");
+        sb.AppendLine($"; Custom ASS style loaded from: {Path.GetFileName(templatePath)}");
+        bool hasScriptType = false, hasPlayResX = false, hasPlayResY = false;
+        foreach (var infoLine in scriptInfoLines)
+        {
+            if (infoLine.StartsWith("ScriptType:", StringComparison.OrdinalIgnoreCase)) hasScriptType = true;
+            if (infoLine.StartsWith("PlayResX:", StringComparison.OrdinalIgnoreCase)) hasPlayResX = true;
+            if (infoLine.StartsWith("PlayResY:", StringComparison.OrdinalIgnoreCase)) hasPlayResY = true;
+            sb.AppendLine(infoLine);
+        }
+        if (!hasScriptType) sb.AppendLine("ScriptType: v4.00+");
+        if (!hasPlayResX) sb.AppendLine("PlayResX: 1920");
+        if (!hasPlayResY) sb.AppendLine("PlayResY: 1080");
+        sb.AppendLine();
+
+        // 2. Determine Main, Secondary, TopDefault, TopSecondary, and Watermark styles
+        var mainEntry = styleLines.FirstOrDefault(s => string.Equals(s.Name, "Default", StringComparison.OrdinalIgnoreCase));
+        if (string.IsNullOrEmpty(mainEntry.Name))
+        {
+            mainEntry = styleLines.FirstOrDefault(s =>
+                !string.Equals(s.Name, "Watermark", StringComparison.OrdinalIgnoreCase) &&
+                !s.Name.StartsWith("Top", StringComparison.OrdinalIgnoreCase));
+        }
+        if (string.IsNullOrEmpty(mainEntry.Name))
+        {
+            mainEntry = styleLines[0];
+        }
+
+        string mainStyleName = mainEntry.Name;
+
+        var secEntry = styleLines.FirstOrDefault(s => string.Equals(s.Name, "Secondary", StringComparison.OrdinalIgnoreCase));
+        if (string.IsNullOrEmpty(secEntry.Name))
+        {
+            secEntry = styleLines.FirstOrDefault(s =>
+                !string.Equals(s.Name, mainStyleName, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(s.Name, "Watermark", StringComparison.OrdinalIgnoreCase) &&
+                !s.Name.StartsWith("Top", StringComparison.OrdinalIgnoreCase));
+        }
+
+        string secStyleName;
+        string[] secFields;
+        if (!string.IsNullOrEmpty(secEntry.Name))
+        {
+            secStyleName = secEntry.Name;
+            secFields = (string[])secEntry.Fields.Clone();
+        }
+        else
+        {
+            // Auto-derive Secondary style from mainStyleName if the user's .ass only defined one style
+            secStyleName = "Secondary";
+            secFields = (string[])mainEntry.Fields.Clone();
+            secFields[0] = secStyleName;
+            if (int.TryParse(secFields[2].Trim(), out int mFs))
+            {
+                secFields[2] = Math.Max(12, (int)Math.Round(mFs * 0.70)).ToString(CultureInfo.InvariantCulture);
+            }
+            secFields[7] = "0"; // Unbold secondary
+            if (double.TryParse(secFields[16].Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out double mOut) && mOut > 0)
+            {
+                secFields[16] = Math.Max(0.8, Math.Round(mOut * 0.65, 1)).ToString("0.#", CultureInfo.InvariantCulture);
+            }
+            if (double.TryParse(secFields[17].Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out double mShad) && mShad > 0)
+            {
+                secFields[17] = Math.Round(mShad * 0.65, 1).ToString("0.#", CultureInfo.InvariantCulture);
+            }
+            styleLines.Add((secStyleName, secFields, "Style: " + string.Join(",", secFields)));
+        }
+
+        // Ensure TopDefault exists (Alignment = 8)
+        string topMainStyleName = "TopDefault";
+        if (!styleLines.Any(s => string.Equals(s.Name, topMainStyleName, StringComparison.OrdinalIgnoreCase)))
+        {
+            var topMainFields = (string[])mainEntry.Fields.Clone();
+            topMainFields[0] = topMainStyleName;
+            topMainFields[18] = "8"; // Top-Center alignment
+            styleLines.Add((topMainStyleName, topMainFields, "Style: " + string.Join(",", topMainFields)));
+        }
+
+        // Ensure TopSecondary exists (Alignment = 8)
+        string topSecStyleName = "TopSecondary";
+        if (!styleLines.Any(s => string.Equals(s.Name, topSecStyleName, StringComparison.OrdinalIgnoreCase)))
+        {
+            var topSecFields = (string[])secFields.Clone();
+            topSecFields[0] = topSecStyleName;
+            topSecFields[18] = "8"; // Top-Center alignment
+            styleLines.Add((topSecStyleName, topSecFields, "Style: " + string.Join(",", topSecFields)));
+        }
+
+        // Ensure Watermark exists
+        if (!styleLines.Any(s => string.Equals(s.Name, "Watermark", StringComparison.OrdinalIgnoreCase)))
+        {
+            string wmFont = mainEntry.Fields[1].Trim();
+            string wmLine = $"Style: Watermark,{wmFont},26,&H20FFFFFF,&H000000FF,&H30000000,&H60000000,0,0,0,0,100,100,0,0,1,1.2,0.8,8,30,30,24,1";
+            styleLines.Add(("Watermark", wmLine.Substring(6).Split(','), wmLine));
+        }
+
+        // Write [V4+ Styles]
+        sb.AppendLine("[V4+ Styles]");
+        sb.AppendLine(styleFormatLine);
+        foreach (var s in styleLines)
+        {
+            sb.AppendLine(s.RawLine);
+        }
+        sb.AppendLine();
+
+        // 3. Extract optional inline override tags {...} from template's sample [Events] Dialogue
+        bool isOpaqueBox = mainEntry.Fields.Length > 15 && mainEntry.Fields[15].Trim() == "3";
+        string mainInlineTag = isOpaqueBox ? "" : "{\\be1}";
+        string secExtraInlineTags = isOpaqueBox ? "" : "\\be1";
+
+        if (sampleDialogueTexts.Count > 0)
+        {
+            string firstSampleText = sampleDialogueTexts[0].Text.Trim();
+            var leadingTagMatch = Regex.Match(firstSampleText, @"^(\{[^}]*\})+");
+            if (leadingTagMatch.Success)
+            {
+                mainInlineTag = leadingTagMatch.Value;
+            }
+            else
+            {
+                mainInlineTag = "";
+            }
+
+            var subTagMatch = Regex.Match(firstSampleText, @"\\N\{([^}]*)\}");
+            if (subTagMatch.Success)
+            {
+                string rawInner = subTagMatch.Groups[1].Value;
+                // Strip leading \rStyleName so we can dynamically bind \r{activeSecStyle}
+                string cleanedInner = Regex.Replace(rawInner, @"^\\r[^\\}]+", "");
+                secExtraInlineTags = cleanedInner;
+            }
+        }
+
+        // 4. Write [Events]
+        sb.AppendLine("[Events]");
+        sb.AppendLine("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text");
+
+        foreach (var item in items)
+        {
+            string startStr = TimeHelper.ToAssTime(item.StartTime);
+            string endStr = TimeHelper.ToAssTime(item.EndTime);
+            string activeMainStyle = item.IsTopTrack ? topMainStyleName : mainStyleName;
+            string activeSecStyle = item.IsTopTrack ? topSecStyleName : secStyleName;
+
+            string targetText = EscapeAssText(item.TargetText);
+
+            if (includeSecondary && !string.IsNullOrWhiteSpace(item.SourceText))
+            {
+                string sourceText = EscapeAssText(item.SourceText);
+                string dialogue = $"{mainInlineTag}{targetText}\\N{{\\r{activeSecStyle}{secExtraInlineTags}}}{sourceText}";
+                sb.AppendLine($"Dialogue: 0,{startStr},{endStr},{activeMainStyle},,0,0,0,,{dialogue}");
+            }
+            else
+            {
+                string dialogue = $"{mainInlineTag}{targetText}";
+                sb.AppendLine($"Dialogue: 0,{startStr},{endStr},{activeMainStyle},,0,0,0,,{dialogue}");
+            }
+        }
+
+        // Ending watermark attribution
+        if (showWatermark && items.Count > 0)
+        {
+            TimeSpan videoEnd = (totalDuration.HasValue && totalDuration.Value > TimeSpan.Zero)
+                ? totalDuration.Value
+                : items.Max(i => i.EndTime);
+
+            double endSec = videoEnd.TotalSeconds;
+            double wmDuration = Math.Min(4.5, Math.Max(2.0, endSec * 0.25));
+            TimeSpan wmStart = TimeSpan.FromSeconds(Math.Max(0.0, endSec - wmDuration));
+            TimeSpan wmEnd = videoEnd;
+
+            if (wmEnd > wmStart)
+            {
+                string wmStartStr = TimeHelper.ToAssTime(wmStart);
+                string wmEndStr = TimeHelper.ToAssTime(wmEnd);
+                string wmText = GetWatermarkText(modelName, targetLanguage);
+                string escapedWm = EscapeAssText(wmText);
+                sb.AppendLine($"Dialogue: 1,{wmStartStr},{wmEndStr},Watermark,,0,0,0,,{{\\fad(350,350)}}{escapedWm}");
+            }
+        }
+
+        return sb.ToString();
     }
 }

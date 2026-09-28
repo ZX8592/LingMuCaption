@@ -38,6 +38,8 @@ public class VideoSynthesizerService
         if (!File.Exists(sourceVideoPath))
             throw new FileNotFoundException($"Source video not found: {sourceVideoPath}");
 
+        config = SubtitleFormatterService.Instance.GetEffectivePreviewConfig(config);
+
         // Prefer FFmpeg with libass and NVENC hardware acceleration
         if (FFmpegService.Instance.IsAvailable)
         {

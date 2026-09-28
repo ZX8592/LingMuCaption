@@ -25,15 +25,11 @@ public partial class App : Application
     
     public App()
     {
-        try { System.IO.File.AppendAllText(System.IO.Path.Combine(AppContext.BaseDirectory, "app_trace.log"), $"[{DateTime.Now:HH:mm:ss.fff}] App..ctor entered\n"); } catch { }
-
         UnhandledException += (s, e) =>
         {
             try
             {
                 Services.AppLogService.Instance.LogCrash("WinUI.Application.UnhandledException", e.Exception, e.Message);
-                System.IO.File.WriteAllText(System.IO.Path.Combine(AppContext.BaseDirectory, "xaml_crash.txt"), 
-                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}]\nMessage: {e.Message}\nException: {e.Exception}\nStackTrace: {e.Exception?.StackTrace}");
             }
             catch { }
         };
@@ -44,8 +40,6 @@ public partial class App : Application
             {
                 var ex = e.ExceptionObject as Exception;
                 Services.AppLogService.Instance.LogCrash("AppDomain.CurrentDomain.UnhandledException", ex, e.ExceptionObject?.ToString());
-                System.IO.File.WriteAllText(System.IO.Path.Combine(AppContext.BaseDirectory, "appdomain_crash.txt"), 
-                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}]\nObject: {e.ExceptionObject}");
             }
             catch { }
         };
@@ -66,7 +60,6 @@ public partial class App : Application
         catch (Exception ex)
         {
             try { Services.AppLogService.Instance.LogCrash("App.InitializeComponent", ex); } catch { }
-            System.IO.File.WriteAllText(System.IO.Path.Combine(AppContext.BaseDirectory, "init_crash.txt"), ex.ToString());
             throw;
         }
     }
@@ -75,14 +68,8 @@ public partial class App : Application
     {
         try
         {
-            System.IO.File.AppendAllText(System.IO.Path.Combine(AppContext.BaseDirectory, "app_trace.log"), 
-                $"[{DateTime.Now:HH:mm:ss.fff}] App.OnLaunched entered\n");
             CurrentWindow = new MainWindow();
-            System.IO.File.AppendAllText(System.IO.Path.Combine(AppContext.BaseDirectory, "app_trace.log"), 
-                $"[{DateTime.Now:HH:mm:ss.fff}] MainWindow created, activating...\n");
             CurrentWindow.Activate();
-            System.IO.File.AppendAllText(System.IO.Path.Combine(AppContext.BaseDirectory, "app_trace.log"), 
-                $"[{DateTime.Now:HH:mm:ss.fff}] CurrentWindow.Activate completed!\n");
 
             try
             {
@@ -93,7 +80,6 @@ public partial class App : Application
         catch (Exception ex)
         {
             try { Services.AppLogService.Instance.LogCrash("App.OnLaunched", ex); } catch { }
-            System.IO.File.WriteAllText(System.IO.Path.Combine(AppContext.BaseDirectory, "onlaunched_crash.txt"), ex.ToString());
             throw;
         }
     }

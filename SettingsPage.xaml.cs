@@ -163,6 +163,7 @@ public sealed partial class SettingsPage : Page
         ShadowDepthLabelBlock.Text = loc.ShadowDepthLabel;
         ShadowColorLabelBlock.Text = loc.ShadowColorLabel;
         EdgeBlurLabelBlock.Text = loc.EdgeBlurLabel;
+        CustomAssLabelBlock.Text = loc.CustomAssLabel;
         AnimationPresetLabelBlock.Text = loc.AnimationPresetLabel;
         AnimationSpeedLabelBlock.Text = loc.AnimSpeedLabel;
 
@@ -191,6 +192,90 @@ public sealed partial class SettingsPage : Page
 
         AnimationComboBox.ItemsSource = ViewModel.AvailableAnimations;
         AnimationComboBox.DisplayMemberPath = "Label";
+
+        RefreshCustomAssComboBoxItems();
+    }
+
+    private bool _isRefreshingCustomAssItems;
+
+    private void RefreshCustomAssComboBoxItems()
+    {
+        if (CustomAssComboBox == null) return;
+        _isRefreshingCustomAssItems = true;
+        try
+        {
+            string currentOptionLabel = LocalizationService.Instance.CustomAssCurrentConfigOption;
+            string selectedFile = ViewModel.Settings.EffectConfig.CustomAssFileName ?? string.Empty;
+
+            var items = new System.Collections.Generic.List<string> { currentOptionLabel };
+            var assFiles = Helpers.FilePathHelper.GetAvailableAssTemplateFiles();
+            foreach (var file in assFiles)
+            {
+                items.Add(file);
+            }
+
+            CustomAssComboBox.ItemsSource = items;
+
+            if (!string.IsNullOrWhiteSpace(selectedFile))
+            {
+                var matched = assFiles.FirstOrDefault(f => string.Equals(f, selectedFile, StringComparison.OrdinalIgnoreCase));
+                if (matched != null)
+                {
+                    CustomAssComboBox.SelectedItem = matched;
+                }
+                else
+                {
+                    // Selected file was deleted or moved; revert to 当前配置
+                    ViewModel.Settings.EffectConfig.CustomAssFileName = string.Empty;
+                    CustomAssComboBox.SelectedIndex = 0;
+                }
+            }
+            else
+            {
+                CustomAssComboBox.SelectedIndex = 0;
+            }
+        }
+        finally
+        {
+            _isRefreshingCustomAssItems = false;
+        }
+    }
+
+    private void UpdateCustomAssOverrideUiState()
+    {
+        bool isUsingBuiltinConfig = string.IsNullOrWhiteSpace(ViewModel.Settings.EffectConfig.CustomAssFileName);
+        double targetOpacity = isUsingBuiltinConfig ? 1.0 : 0.5;
+
+        Control[] overriddenControls =
+        [
+            FontFamilyComboBox,
+            SecondaryFontFamilyComboBox,
+            FontSizeSlider,
+            SecondaryScaleSlider,
+            PrimaryColorBox,
+            SecondaryColorBox,
+            BoldCheckBox,
+            ItalicCheckBox,
+            LetterSpacingSlider,
+            OutlineWidthSlider,
+            OutlineColorBox,
+            ShadowDepthSlider,
+            ShadowColorBox,
+            AnimationComboBox,
+            AnimationSpeedSlider,
+            MarginVSlider,
+            SubSpacingSlider,
+            EdgeBlurSlider
+        ];
+
+        foreach (var ctrl in overriddenControls)
+        {
+            if (ctrl != null)
+            {
+                ctrl.IsEnabled = isUsingBuiltinConfig;
+                ctrl.Opacity = targetOpacity;
+            }
+        }
     }
 
     private void LoadValuesToUi()
@@ -271,6 +356,9 @@ public sealed partial class SettingsPage : Page
 
         SubSpacingSlider.Value = ec.SubSpacing;
         SubSpacingValBlock.Text = $"{ec.SubSpacing} px";
+
+        RefreshCustomAssComboBoxItems();
+        UpdateCustomAssOverrideUiState();
     }
 
     private void UpdateCliUi()
@@ -482,7 +570,7 @@ public sealed partial class SettingsPage : Page
         double currentSceneScale,
         bool isTopTrack = false)
     {
-        var ec = ViewModel.Settings.EffectConfig;
+        var ec = SubtitleFormatterService.Instance.GetEffectivePreviewConfig(ViewModel.Settings.EffectConfig);
         var font = !string.IsNullOrWhiteSpace(ec.FontName) ? new FontFamily(ec.FontName) : FontFamily.XamlAutoFontFamily;
 
         // Keep the on-screen subtitle size fixed to the size it has when a 1920x1080
@@ -1152,6 +1240,36 @@ public sealed partial class SettingsPage : Page
         EdgeBlurValBlock.Text = val.ToString("0.0");
         ViewModel.Settings.EffectConfig.EdgeBlur = val;
         ViewModel.SaveSettings();
+        UpdatePreviewUi();
+    }
+
+    private void OnCustomAssDropDownOpened(object sender, object e)
+    {
+        if (!_isLoaded) return;
+        RefreshCustomAssComboBoxItems();
+    }
+
+    private void OnCustomAssChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_isLoaded || _isRefreshingCustomAssItems || CustomAssComboBox == null) return;
+
+        string currentOptionLabel = LocalizationService.Instance.CustomAssCurrentConfigOption;
+        string? selected = CustomAssComboBox.SelectedItem as string;
+
+        if (string.IsNullOrWhiteSpace(selected) ||
+            string.Equals(selected, currentOptionLabel, StringComparison.OrdinalIgnoreCase))
+        {
+            ViewModel.Settings.EffectConfig.CustomAssFileName = string.Empty;
+        }
+        else
+        {
+            ViewModel.Settings.EffectConfig.CustomAssFileName = selected;
+        }
+
+        UpdateCustomAssOverrideUiState();
+        ViewModel.SaveSettings();
+        _renderedAssPreviewContent = null;
+        _pendingAssPreviewContent = null;
         UpdatePreviewUi();
     }
 

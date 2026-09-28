@@ -79,4 +79,7 @@ public partial class EffectSubtitleConfig : ObservableObject
 
     [ObservableProperty]
     private int _subSpacing = 0; // Spacing in pixels between primary and secondary subtitles
+
+    [ObservableProperty]
+    private string _customAssFileName = string.Empty; // Empty means "当前配置" (use built-in UI settings)
 }

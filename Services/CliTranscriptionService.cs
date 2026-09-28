@@ -214,19 +214,19 @@ public class CliTranscriptionService
         string searchInstruction = webSearchMode switch
         {
             WebSearchMode.Accurate =>
-                "- WEB SEARCH RULES: Web search is permitted ONLY for overall background, domain knowledge, entity names, scenario comprehension, and extended song lyrics appearing in the audio. You MUST NOT search for line-by-line dialogue transcripts.",
+                "- WEB SEARCH RULES: Web search is permitted ONLY for overall background, domain knowledge, entity names, scenario comprehension, and extended song lyrics appearing in the audio. You MUST NOT search for line-by-line dialogue transcripts or original work texts.",
             WebSearchMode.Fast =>
                 "- WEB SEARCH RULES (FAST): Only perform minimal web searches for essential, unknown core domain concepts or proper nouns when context is completely insufficient. Minimize search calls.",
             WebSearchMode.Off =>
                 "- WEB SEARCH RULES (OFFLINE): Do NOT perform any web searches. Rely strictly on audio context and internal knowledge.",
-            _ => "- WEB SEARCH RULES: Web search is permitted only for overall background understanding, not for dialogue transcripts."
+            _ => "- WEB SEARCH RULES: Web search is permitted only for overall background understanding, not for dialogue transcripts or original work texts."
         };
 
         string entityRetrievalInstruction = webSearchMode == WebSearchMode.Off
             ? "     * If the audio belongs to a known intellectual property (e.g. anime series, movie, TV series, video game, novel) or a specialized academic/technical domain: Rely strictly on your internal pre-trained knowledge base to retrieve and anchor the canonical official Chinese names (官方规范中文译名) of all main characters, factions, weapons, settings, and terminology upfront without calling web search tools.\n" +
               "     * Homophone Glyph Memory Trap: Internal pre-trained memory frequently confuses Chinese homophone or variant characters (同音异形字). Always anchor exact standard Chinese characters upfront and maintain 100% consistency across all segments."
-            : "     * Mandatory Chinese-Query Search: Once you identify the work, IP, or domain from the audio, you MUST execute at least one `search_web` query IN CHINESE (e.g., searching the Chinese work title/topic + \"角色 / 专有名词 / 官方中文译名\") to retrieve the exact official Chinese characters into the search results.\n" +
-              "     * Homophone Glyph Memory Trap: Foreign-language searches only return source-language names without Chinese glyphs, and internal pre-trained memory frequently confuses Chinese homophone or variant characters (同音异形字). NEVER rely on internal memory to write translated person names or proper nouns—always anchor their exact Chinese characters from Chinese search results upfront and maintain 100% consistency across all segments.";
+            : "     * Post-Search Chinese Proper Noun Verification: Perform background and song lyric searches in the original spoken language first (e.g., search original-language lyrics for insert/ending songs, NOT Chinese-only lyrics). After all regular searches are completed, you MUST execute at least one additional `search_web` query IN CHINESE specifically for person names and proper nouns (e.g., searching the Chinese work title/topic + \"角色 / 专有名词 / 官方中文译名\") to retrieve their exact official Chinese characters.\n" +
+              "     * Homophone Glyph Memory Trap: Foreign-language searches only return source-language names without Chinese glyphs, and internal pre-trained memory frequently confuses Chinese homophone or variant characters (同音异形字). Always anchor the exact Chinese characters of person names and proper nouns from that Chinese search result and maintain 100% consistency across all segments.";
 
         // Divide into 12-minute segments to avoid token limit cutoffs
         var segments = new List<(TimeSpan Start, TimeSpan End)>();
@@ -267,10 +267,12 @@ $@"   - CORE ACOUSTIC PRINCIPLES:
      * Verbatim Syllable Fidelity: Speech phonemes and syllables MUST match the acoustic audio completely and verbatim. Never guess words, substitute unheard syllables, or normalize colloquial speech into formal text.
      * No Thematic or Cultural Fabrication: Never invent poetic phrases, jargon, or dramatic lines merely because they seem plausible for the context or character. Never alter heard syllables to fit expected conversational idioms, cultural tropes, or famous catchphrases.
      * Grammatical & Morphological Precision (in 'source_text' ONLY): Strictly preserve the speaker's exact spoken grammatical endings, verb conjugations, and tenses in 'source_text'. Do not append or elongate trailing syllables or modal particles that were not spoken.
-     * Masked Speech, Interjections & Background Lyrics: Never discard short remarks, affirmations, curses, sighs, or ongoing background song lyrics occurring between or masked by loud sound effects, background noise, musical crescendos, or louder foreground dialogue.
-     * Rapid Turn-Taking & Simultaneous Dual-Speaker Overlaps:
+     * Masked Speech, Interjections & Background Lyrics: Never discard short remarks, affirmations, curses, sighs, or ongoing background song lyrics occurring between or masked by loud sound effects, background noise, musical crescendos, or louder foreground dialogue. Do NOT miss any faint/quiet voices or speech.
+     * Repeated Phrases: For a phrase repeated 3 or more times consecutively, merge from the start of the first to the end of the last into a single entry.
+     * Rapid Turn-Taking & Simultaneous Multi-Voice Overlaps:
        - When speakers talk in rapid succession or interrupt, do NOT merge or assimilate the first speaker's trailing words with the second speaker's speech. Keep them as separate entries.
-       - When two different speakers speak DIFFERENT content simultaneously (e.g., overlapping interjections/reactions while another person is talking, or foreground dialogue overlapping with background speech/lyrics), output BOTH as separate subtitle entries with their true overlapping acoustic timestamps (the second speaker's 'start' may be earlier than the first speaker's 'end'). Merge into a single entry ONLY when multiple people shout the exact same phrase in unison.
+       - When two voices occur simultaneously (two speakers talking at the same time, or foreground dialogue overlapping with background song lyrics), you MUST output BOTH as COMPLETE, un-truncated subtitle entries with their true overlapping acoustic timestamps. NEVER truncate one speaker's sentence or split the time interval half-and-half to avoid timestamp overlap.
+       - Primary Subtitle Identification on Overlaps: Whenever two entries overlap in time, explicitly indicate which entry is the main subtitle using `""is_primary"": true` (for the main foreground dialogue that stays on the bottom track) and `""is_primary"": false` (for the secondary interjection or background song lyric that goes to the top track).
    {segInstruction}
    - TIMESTAMPS & ACOUSTIC BOUNDARY SNAPPING:
      * Format: Set 'start' and 'end' timestamps strictly to 'HH:MM:SS.mmm'.
@@ -296,6 +298,8 @@ $@"   - CORE ACOUSTIC PRINCIPLES:
      3) Phonetic Discrepancy / Syllable Ambiguity: Transcribed words do not fully or unambiguously match the heard acoustic syllables/phonemes.
      4) Acoustic Masking / Singing: Speech or song lyrics are muffled, rapid, whispered, or heavily masked by music, noise, sound effects, or distortion. If you are uncertain about sung lyrics, YOU MUST FLAG THEM.
      5) Contextual Incoherence: The heard phrase contradicts surrounding conversation logic or scene grammar.
+     6) Confirmed or Suspected Dual-Voice / Dialogue-Lyric Overlap (确定或怀疑存在双语音重叠必打标):
+        Whenever you detect OR even suspect that two voices (two simultaneous speakers, or speech overlapping with background vocals/lyrics) are occurring at the same time, you MUST add a flag (e.g., flag: ""dual-voice overlap: verify both complete utterances and primary track"") for Stage 3 verification.
    {styleInstruction}
    - SOURCE & TARGET TEXT SPECIFICATIONS:
      * In 'source_text', output verbatim transcription in the original spoken language matching heard syllables, native orthography, and standard numeral conventions of that language (never arbitrarily mix numeral systems), aligned strictly to the exact clause boundaries of 'target_text' without artificial continuation ellipses.
@@ -306,14 +310,14 @@ $@"   - CORE ACOUSTIC PRINCIPLES:
 
         string simplifiedStage2Rules =
 $@"Follow all acoustic and transcription principles:
-1. Verbatim syllable fidelity & Overlaps: No thematic fabrication; in 'source_text', preserve exact grammatical endings and spoken phonemes. Never discard remarks or background song lyrics masked by noise, music, or louder foreground speech. When two different speakers speak different content simultaneously (or when foreground dialogue overlaps with background speech/lyrics), output both as separate entries with their true overlapping timestamps (merge into one entry only if multiple voices shout the exact same phrase in unison).
+1. Verbatim syllable fidelity & Complete Overlaps: No thematic fabrication; in 'source_text', preserve exact grammatical endings and spoken phonemes. Never discard remarks or background song lyrics masked by noise, music, or louder foreground speech. Do NOT miss any faint/quiet voices or speech. For a phrase repeated 3+ times consecutively, merge from the start of the first to the end of the last into a single entry. Whenever two voices occur simultaneously (dual speakers or dialogue + background song lyrics), you MUST output BOTH as COMPLETE, un-truncated subtitle entries with their true overlapping timestamps (never truncate either voice or slice time half-and-half), and set `""is_primary"": true` on the main dialogue entry and `""is_primary"": false` on the secondary/lyric entry.
 2. Acoustic Snapping: Anchor 'start' strictly where the first syllable begins (NEVER inertially attach 'start' near the previous sentence's 'end'); anchor 'end' strictly where the final syllable finishes.
 3. Universal Split Re-alignment: For ALL split subtitle entries (whether split due to character limits, clauses, pauses, or pacing), independently anchor each split line to the physical acoustic speech boundaries of that specific phrase (never divide time linearly).
 4. Clean boundaries: NO artificial leading/trailing ellipses ('...' or '……').
 5. Dual-Track Length Limit: 'target_text' MUST NOT exceed {maxChars} Chinese characters, and 'source_text' MUST NOT exceed {maxSourceCjkChars} CJK characters (or {maxSourceLatinChars} alphabetic characters). Split at a natural grammatical pause whenever either line exceeds its limit.
 {styleInstruction}
 6. Source & Target text: In 'source_text', follow the native orthography and standard numeral conventions of the spoken language, aligned strictly to each split clause. In 'target_text', convey the most accurate tone using the fewest words in pure Chinese (convert foreign modal particles into natural Chinese expressions or omit them cleanly). Enclose work titles in '《》' and use '·' for transliterated name separators.
-7. Mandatory Flagging: Flag ANY person name or proper noun whose Chinese translation was not searched in Chinese, as well as uncertain translations, homophone doubts, acoustic masking, song lyrics, or contextual incoherence using the ""flag"" field.";
+7. Mandatory Flagging: Flag ANY person name or proper noun whose Chinese translation was not searched in Chinese, ANY confirmed or suspected simultaneous dual-voice/lyric overlap, as well as uncertain translations, homophone doubts, acoustic masking, song lyrics, or contextual incoherence using the ""flag"" field.";
 
         string prompt =
 $@"You are an intelligent, context-aware video subtitle transcription and translation expert dedicated to producing professional Chinese subtitles.
@@ -722,7 +726,14 @@ Output ONLY the remaining subtitles as a valid JSON array of objects with fields
 
         // STAGE 3: Targeted verification on flagged items (65% to 80% smooth transition)
         ReportMonotonicProgress(65.0);
-        var flaggedItems = allSubtitles.Where(s => !string.IsNullOrWhiteSpace(s.Flag)).ToList();
+        var directFlagged = allSubtitles.Where(s => !string.IsNullOrWhiteSpace(s.Flag)).ToList();
+        var overlapAnchors = directFlagged
+            .Where(s => s.IsPrimary == false || (s.Flag != null && s.Flag.Contains("overlap", StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+        var flaggedItems = allSubtitles
+            .Where(s => !string.IsNullOrWhiteSpace(s.Flag) ||
+                        overlapAnchors.Any(a => Math.Abs((s.StartTime - a.StartTime).TotalSeconds) <= 15.0))
+            .ToList();
         if (flaggedItems.Count > 0)
         {
             onStatusUpdate?.Invoke($"AI 正在进行靶向核对与微创修正 ({flaggedItems.Count} 处疑难标记)...");
@@ -762,6 +773,7 @@ Output ONLY the remaining subtitles as a valid JSON array of objects with fields
                     target_text = f.TargetText,
                     start = f.Start,
                     end = f.End,
+                    is_primary = f.IsPrimary,
                     flag = f.Flag
                 }), new JsonSerializerOptions { WriteIndented = true });
 
@@ -777,7 +789,7 @@ Output ONLY the remaining subtitles as a valid JSON array of objects with fields
 
                 string verifyPrompt =
 $@"STAGE 3 - TARGETED VERIFICATION & REFINEMENT:
-The following subtitle entries were flagged during transcription due to non-standard entity translations, translation/phrasing quality uncertainty, phonetic/syllable ambiguity, domain terminology, context conflict, or acoustic masking/song lyrics:
+The following subtitle entries were flagged during transcription due to non-standard entity translations, translation/phrasing quality uncertainty, phonetic/syllable ambiguity, domain terminology, context conflict, simultaneous dual-voice overlap, or acoustic masking/song lyrics:
 {itemsJson}
 
 With full audio context now established across the entire recording, verify and refine each specific entry ({searchGuidance}):
@@ -787,9 +799,10 @@ With full audio context now established across the entire recording, verify and 
    - If the audio is natively Chinese, rectify any homophone errors, dialect misunderstandings, or non-standard terms into standard Chinese.
 2. Acoustic Reality & Fabrication Audit:
    - Audit each entry against the true acoustic audio. Reject and overturn any lines where Stage 2 may have hallucinated or fabricated words to fit a conversational context. Rectify 'source_text' to authentic heard syllables and official terminology.
+   - For entries flagged with dual-voice or dialogue-lyric overlap, carefully re-listen to that exact time window to ensure BOTH simultaneous voices are transcribed in full without missing clauses or artificial truncation, outputting both overlapping entries with accurate timestamps and `""is_primary""` (true for main dialogue, false for secondary/lyric). Also set `""is_primary"": false` on all content related to the secondary-marked parts so they stay at the top of the screen and avoid jumping up and down.
 3. Acoustic Boundary & Split Re-Verification:
    - Verify that 'start' and 'end' timestamps strictly anchor to the first syllable onset (never inertially attached near the previous 'end' across pauses) and final syllable decay offset, especially for split phrases.
-Output ONLY a valid JSON array containing the verified/corrected entries with fields: index, source_text, target_text, start, end.";
+Output ONLY a valid JSON array containing the verified/corrected entries with fields: index, source_text, target_text, start, end (and is_primary when overlapping or secondary).";
 
                 string verifyOutput = await RunCliTurnAsync(
                     resolvedCli,
@@ -805,18 +818,34 @@ Output ONLY a valid JSON array containing the verified/corrected entries with fi
 
                 var verifiedBatch = ParseSubtitleResponse(verifyOutput);
                 int correctedCount = 0;
+                var updatedMatches = new HashSet<SubtitleItem>();
                 foreach (var vItem in verifiedBatch)
                 {
-                    var match = allSubtitles.FirstOrDefault(x => x.Index == vItem.Index || (Math.Abs((x.StartTime - vItem.StartTime).TotalSeconds) < 1.0));
+                    var match = allSubtitles.FirstOrDefault(x =>
+                        !updatedMatches.Contains(x) &&
+                        (x.Index == vItem.Index || Math.Abs((x.StartTime - vItem.StartTime).TotalSeconds) < 1.0));
+
                     if (match != null)
                     {
+                        updatedMatches.Add(match);
                         match.SourceText = vItem.SourceText;
                         match.TargetText = vItem.TargetText;
+                        match.StartTime = vItem.StartTime;
+                        match.EndTime = vItem.EndTime;
+                        match.Start = vItem.Start;
+                        match.End = vItem.End;
+                        if (vItem.IsPrimary.HasValue) match.IsPrimary = vItem.IsPrimary;
                         match.Flag = null;
                         correctedCount++;
                     }
+                    else
+                    {
+                        vItem.Flag = null;
+                        allSubtitles.Add(vItem);
+                        correctedCount++;
+                    }
                 }
-                AppLogService.Instance.LogInfo($"[AI转录] 阶段三靶向核对完成，成功修正 {correctedCount} 条字幕。");
+                AppLogService.Instance.LogInfo($"[AI转录] 阶段三靶向核对完成，成功修正/补充 {correctedCount} 条字幕。");
             }
             catch (Exception ex)
             {
@@ -1112,6 +1141,7 @@ Output ONLY a valid JSON array containing the verified/corrected entries with fi
         var tgtPattern = new Regex(@"[""']?target_text[""']?\s*:\s*""(?<val>(?:[^""\\]|\\.)*)""", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         var flagPattern = new Regex(@"[""']?flag[""']?\s*:\s*""(?<val>(?:[^""\\]|\\.)*)""", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         var idxPattern = new Regex(@"[""']?index[""']?\s*:\s*(?<val>\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        var primaryPattern = new Regex(@"[""']?is_primary[""']?\s*:\s*(?<val>true|false)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         int autoIdx = 1;
         foreach (Match m in matches)
@@ -1126,11 +1156,18 @@ Output ONLY a valid JSON array containing the verified/corrected entries with fi
                 var tgtMatch = tgtPattern.Match(block);
                 var flagMatch = flagPattern.Match(block);
                 var idxMatch = idxPattern.Match(block);
+                var primaryMatch = primaryPattern.Match(block);
 
                 int idx = autoIdx++;
                 if (idxMatch.Success && int.TryParse(idxMatch.Groups["val"].Value, out int parsedIdx))
                 {
                     idx = parsedIdx;
+                }
+
+                bool? isPrimary = null;
+                if (primaryMatch.Success && bool.TryParse(primaryMatch.Groups["val"].Value, out bool parsedPrimary))
+                {
+                    isPrimary = parsedPrimary;
                 }
 
                 string src = srcMatch.Success ? srcMatch.Groups["val"].Value : "";
@@ -1148,7 +1185,8 @@ Output ONLY a valid JSON array containing the verified/corrected entries with fi
                     End = endMatch.Groups["val"].Value,
                     SourceText = src,
                     TargetText = tgt,
-                    Flag = flagVal
+                    Flag = flagVal,
+                    IsPrimary = isPrimary
                 });
             }
         }

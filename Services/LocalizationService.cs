@@ -110,6 +110,8 @@ public class LocalizationService
     public string ShadowDepthLabel => IsChinese ? "投影深度：" : "Shadow Depth:";
     public string ShadowColorLabel => IsChinese ? "投影颜色：" : "Shadow Color:";
     public string EdgeBlurLabel => IsChinese ? "边缘柔化：" : "Edge Softening:";
+    public string CustomAssLabel => IsChinese ? "自定义样式配置文件 (.ass)：" : "Custom Style Template (.ass):";
+    public string CustomAssCurrentConfigOption => IsChinese ? "当前配置" : "Current Configuration";
     public string AnimationPresetLabel => IsChinese ? "动态效果预设：" : "Animation Preset:";
     public string AnimNone => IsChinese ? "无动效 (静态居中)" : "None (Static)";
     public string AnimFade => IsChinese ? "平滑淡入淡出 (推荐)" : "Smooth Fade In/Out (Recommended)";

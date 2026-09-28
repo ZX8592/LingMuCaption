@@ -23,6 +23,9 @@ public class SubtitleItem
     [JsonPropertyName("flag")]
     public string? Flag { get; set; }
 
+    [JsonPropertyName("is_primary")]
+    public bool? IsPrimary { get; set; }
+
     [JsonIgnore]
     public TimeSpan StartTime { get; set; }
 
