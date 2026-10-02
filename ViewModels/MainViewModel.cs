@@ -314,6 +314,8 @@ public partial class MainViewModel : ObservableObject
                 settings.EnableWebSearch,
                 settings.TargetLanguage);
 
+            EnsureSufficientDiskSpace(task.FilePath, task.ImportedRootDirectory, taskSandboxDir, duration, settings.OutputMode);
+
             // Step 1: Extract full unbroken audio
             RunOnUi(() =>
             {
@@ -451,6 +453,7 @@ public partial class MainViewModel : ObservableObject
 
                 string outVideoPath = Path.Combine(outDir, $"{baseFileName}_subtitled{outVideoExt}");
                 string tempSubFile = Path.Combine(Path.GetTempPath(), $"{baseFileName}_{Guid.NewGuid():N}.ass");
+                createdVideoPath = outVideoPath;
 
                 try
                 {
@@ -480,7 +483,6 @@ public partial class MainViewModel : ObservableObject
                         renderProgress,
                         taskToken);
 
-                    createdVideoPath = outVideoPath;
                     RunOnUi(() => task.OutputPath = outVideoPath);
                 }
                 finally
@@ -502,6 +504,7 @@ public partial class MainViewModel : ObservableObject
 
                 string outVideoPath = Path.Combine(outDir, $"{baseFileName}_subtitled{outVideoExt}");
                 string tempSubFile = Path.Combine(Path.GetTempPath(), $"{baseFileName}_{Guid.NewGuid():N}.ass");
+                createdVideoPath = outVideoPath;
 
                 try
                 {
@@ -521,7 +524,6 @@ public partial class MainViewModel : ObservableObject
                         tempSubFile,
                         taskToken);
 
-                    createdVideoPath = outVideoPath;
                     RunOnUi(() => task.OutputPath = outVideoPath);
                 }
                 finally
@@ -636,5 +638,93 @@ public partial class MainViewModel : ObservableObject
                 AppLogService.Instance.LogInfo("[清理] 已彻底清理本次任务所有临时音频、沙盒与会话缓存。");
             }
         }
+    }
+
+    private static void EnsureSufficientDiskSpace(
+        string videoFilePath,
+        string? importedRootDir,
+        string tempSandboxDir,
+        TimeSpan duration,
+        OutputMode outputMode)
+    {
+        long sourceBytes = 0;
+        try
+        {
+            if (File.Exists(videoFilePath))
+            {
+                sourceBytes = new FileInfo(videoFilePath).Length;
+            }
+        }
+        catch { }
+
+        // Estimate required temporary space for AAC 192kbps extracted audio + sandbox logs (~2.5 MB/min, minimum 100 MB)
+        long requiredTempBytes = Math.Max(
+            100L * 1024 * 1024,
+            duration.TotalMinutes > 0
+                ? (long)(duration.TotalMinutes * 2.5 * 1024 * 1024)
+                : Math.Max(100L * 1024 * 1024, sourceBytes / 10));
+
+        // Estimate required output space based on OutputMode
+        long requiredOutputBytes = outputMode switch
+        {
+            OutputMode.HardsubVideo => (long)(sourceBytes * 1.25) + (100L * 1024 * 1024),
+            OutputMode.SoftsubVideo => (long)(sourceBytes * 1.05) + (50L * 1024 * 1024),
+            _ => 20L * 1024 * 1024
+        };
+
+        string outDir = FilePathHelper.GetOutputDirectory(videoFilePath, importedRootDir);
+        string? tempRoot = null;
+        string? outRoot = null;
+        try { tempRoot = Path.GetPathRoot(Path.GetFullPath(tempSandboxDir)); } catch { }
+        try { outRoot = Path.GetPathRoot(Path.GetFullPath(outDir)); } catch { }
+
+        static string FormatMbOrGb(long bytes)
+        {
+            double gb = bytes / (1024.0 * 1024.0 * 1024.0);
+            return gb >= 1.0 ? $"{gb:F2} GB" : $"{bytes / (1024.0 * 1024.0):F0} MB";
+        }
+
+        if (!string.IsNullOrWhiteSpace(tempRoot) &&
+            !string.IsNullOrWhiteSpace(outRoot) &&
+            string.Equals(tempRoot, outRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            long totalRequired = requiredTempBytes + requiredOutputBytes;
+            if (TryGetAvailableFreeSpace(outRoot, out long freeBytes) && freeBytes < totalRequired)
+            {
+                throw new IOException($"磁盘 ({outRoot.TrimEnd('\\')}) 剩余空间不足：当前可用 {FormatMbOrGb(freeBytes)}，本次任务预计需要至少 {FormatMbOrGb(totalRequired)}。");
+            }
+        }
+        else
+        {
+            if (!string.IsNullOrWhiteSpace(tempRoot) &&
+                TryGetAvailableFreeSpace(tempRoot, out long freeTempBytes) &&
+                freeTempBytes < requiredTempBytes)
+            {
+                throw new IOException($"系统临时盘 ({tempRoot.TrimEnd('\\')}) 剩余空间不足：当前可用 {FormatMbOrGb(freeTempBytes)}，提取音频预计需要至少 {FormatMbOrGb(requiredTempBytes)}。");
+            }
+
+            if (!string.IsNullOrWhiteSpace(outRoot) &&
+                TryGetAvailableFreeSpace(outRoot, out long freeOutBytes) &&
+                freeOutBytes < requiredOutputBytes)
+            {
+                throw new IOException($"输出目标盘 ({outRoot.TrimEnd('\\')}) 剩余空间不足：当前可用 {FormatMbOrGb(freeOutBytes)}，导出结果预计需要至少 {FormatMbOrGb(requiredOutputBytes)}。");
+            }
+        }
+    }
+
+    private static bool TryGetAvailableFreeSpace(string rootPath, out long availableFreeSpace)
+    {
+        availableFreeSpace = 0;
+        try
+        {
+            var drive = new DriveInfo(rootPath);
+            if (drive.IsReady)
+            {
+                availableFreeSpace = drive.AvailableFreeSpace;
+                return true;
+            }
+        }
+        catch { }
+        return false;
     }
 }

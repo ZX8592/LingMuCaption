@@ -103,12 +103,20 @@
                             <RadioButton x:Name="StyleFreeRadio" Content="Free / Localized (Idiomatic subtitle phrasing)" GroupName="TransStyleGroup" Checked="OnStyleChecked" />
                         </StackPanel>
 
-                        <!-- Smart Web Search Intensity (3 Levels) -->
+                        <!-- Smart Web Search (On / Off) -->
                         <StackPanel Spacing="8">
-                            <TextBlock x:Name="WebSearchModeLabelBlock" Text="Web Search Intensity:" FontSize="13" FontWeight="Medium" />
-                            <RadioButton x:Name="WebSearchAccurateRadio" Content="Accurate (Deep verification of proper nouns &amp; terms - Default)" GroupName="WebSearchGroup" Checked="OnWebSearchModeChecked" />
-                            <RadioButton x:Name="WebSearchFastRadio" Content="Fast (Only search critical entities, reduce intensity &amp; time)" GroupName="WebSearchGroup" Checked="OnWebSearchModeChecked" />
+                            <TextBlock x:Name="WebSearchModeLabelBlock" Text="Web Search:" FontSize="13" FontWeight="Medium" />
+                            <RadioButton x:Name="WebSearchAccurateRadio" Content="On (Deep verification of proper nouns &amp; terms - Default)" GroupName="WebSearchGroup" Checked="OnWebSearchModeChecked" />
                             <RadioButton x:Name="WebSearchOffRadio" Content="Off (Context-based only, no web searches)" GroupName="WebSearchGroup" Checked="OnWebSearchModeChecked" />
+                        </StackPanel>
+
+                        <!-- Cross-Video Glossary CSV Selection -->
+                        <StackPanel Spacing="8">
+                            <TextBlock x:Name="GlossaryCsvLabelBlock" Text="跨视频术语表 (.csv)：" FontSize="13" FontWeight="Medium" />
+                            <ComboBox x:Name="GlossaryCsvComboBox"
+                                      MinWidth="280"
+                                      DropDownOpened="OnGlossaryComboDropDownOpened"
+                                      SelectionChanged="OnGlossarySelectionChanged" />
                         </StackPanel>
 
                         <!-- Secondary Subtitle (Bilingual) -->
@@ -389,7 +397,7 @@
                                             CornerRadius="4"
                                             Padding="6,2"
                                             VerticalAlignment="Center">
-                                        <TextBlock x:Name="AboutVersionBlock" Text="V2.1" FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                        <TextBlock x:Name="AboutVersionBlock" Text="V2.2" FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
                                     </Border>
                                     <TextBlock x:Name="AboutAuthorBlock" Text="by 风ノ夏" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Margin="2,0,0,0" />
                                 </StackPanel>

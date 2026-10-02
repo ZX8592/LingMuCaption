@@ -68,10 +68,13 @@ public class LocalizationService
     public string StyleBalanced => IsChinese ? "标准平衡 (兼顾准确性与自然表达)" : "Balanced (Natural & accurate)";
     public string StyleFree => IsChinese ? "偏意译 (影视口语自然本地化)" : "Free / Localized (Idiomatic subtitle phrasing)";
 
-    public string WebSearchModeLabel => IsChinese ? "联网搜索强度：" : "Web Search Intensity:";
-    public string WebSearchAccurate => IsChinese ? "精确 (深度检索验证专有名词与背景，准确无误 - 默认)" : "Accurate (Deep verification of proper nouns & terms - Default)";
-    public string WebSearchFast => IsChinese ? "快速 (仅检索必要核心专有名词，减少搜索强度与耗时)" : "Fast (Only search critical entities, reduce search intensity & time)";
+    public string WebSearchModeLabel => IsChinese ? "联网搜索：" : "Web Search:";
+    public string WebSearchAccurate => IsChinese ? "开启 (精确深度检索验证专有名词与背景 - 默认推荐)" : "On (Accurate deep verification of proper nouns & context - Default)";
+    public string WebSearchFast => WebSearchAccurate;
     public string WebSearchOff => IsChinese ? "关闭 (完全基于上下文，不进行联网搜索)" : "Off (Context-based only, no web searches)";
+
+    public string GlossaryCsvLabel => IsChinese ? "跨视频术语表 (.csv，放入灵幕助手.exe同级文件夹)：" : "Cross-Video Glossary (.csv in app folder):";
+    public string GlossaryNoneOption => IsChinese ? "无" : "None";
 
     public string SecondarySubtitleLabel => IsChinese ? "启用副字幕 (自动将原语言作为第二行对照)：" : "Enable Secondary Subtitle (Original recognized speech as secondary line):";
     public string TargetLanguageLabel => IsChinese ? "字幕翻译目标语言：" : "Target Subtitle Language:";

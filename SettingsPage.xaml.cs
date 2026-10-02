@@ -135,8 +135,8 @@ public sealed partial class SettingsPage : Page
 
         WebSearchModeLabelBlock.Text = loc.WebSearchModeLabel;
         WebSearchAccurateRadio.Content = loc.WebSearchAccurate;
-        WebSearchFastRadio.Content = loc.WebSearchFast;
         WebSearchOffRadio.Content = loc.WebSearchOff;
+        GlossaryCsvLabelBlock.Text = loc.GlossaryCsvLabel;
         SecondarySubSwitch.Header = loc.SecondarySubtitleLabel;
         TargetLangLabelBlock.Text = loc.TargetLanguageLabel;
 
@@ -193,7 +193,74 @@ public sealed partial class SettingsPage : Page
         AnimationComboBox.ItemsSource = ViewModel.AvailableAnimations;
         AnimationComboBox.DisplayMemberPath = "Label";
 
+        RefreshGlossaryComboBoxItems();
         RefreshCustomAssComboBoxItems();
+    }
+
+    private bool _isRefreshingGlossaryItems;
+
+    private void RefreshGlossaryComboBoxItems()
+    {
+        if (GlossaryCsvComboBox == null) return;
+        _isRefreshingGlossaryItems = true;
+        try
+        {
+            string noneLabel = LocalizationService.Instance.GlossaryNoneOption;
+            string selectedCsv = ViewModel.Settings.SelectedGlossaryCsv ?? string.Empty;
+
+            var items = new System.Collections.Generic.List<string> { noneLabel };
+            var csvFiles = GlossaryService.GetAvailableCsvFiles();
+            foreach (var file in csvFiles)
+            {
+                items.Add(file);
+            }
+
+            GlossaryCsvComboBox.ItemsSource = items;
+
+            if (!string.IsNullOrWhiteSpace(selectedCsv))
+            {
+                var matched = csvFiles.FirstOrDefault(f => string.Equals(f, selectedCsv, StringComparison.OrdinalIgnoreCase));
+                if (matched != null)
+                {
+                    GlossaryCsvComboBox.SelectedItem = matched;
+                }
+                else
+                {
+                    ViewModel.Settings.SelectedGlossaryCsv = string.Empty;
+                    GlossaryCsvComboBox.SelectedIndex = 0;
+                    SettingsService.Instance.SaveSettings();
+                }
+            }
+            else
+            {
+                GlossaryCsvComboBox.SelectedIndex = 0;
+            }
+        }
+        finally
+        {
+            _isRefreshingGlossaryItems = false;
+        }
+    }
+
+    private void OnGlossaryComboDropDownOpened(object sender, object e)
+    {
+        RefreshGlossaryComboBoxItems();
+    }
+
+    private void OnGlossarySelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_isLoaded || _isRefreshingGlossaryItems) return;
+        string noneLabel = LocalizationService.Instance.GlossaryNoneOption;
+        if (GlossaryCsvComboBox.SelectedItem is string selected &&
+            !string.Equals(selected, noneLabel, StringComparison.OrdinalIgnoreCase))
+        {
+            ViewModel.Settings.SelectedGlossaryCsv = selected;
+        }
+        else
+        {
+            ViewModel.Settings.SelectedGlossaryCsv = string.Empty;
+        }
+        SettingsService.Instance.SaveSettings();
     }
 
     private bool _isRefreshingCustomAssItems;
@@ -308,9 +375,13 @@ public sealed partial class SettingsPage : Page
 
         switch (s.WebSearchMode)
         {
-            case WebSearchMode.Accurate: WebSearchAccurateRadio.IsChecked = true; break;
-            case WebSearchMode.Fast: WebSearchFastRadio.IsChecked = true; break;
-            case WebSearchMode.Off: WebSearchOffRadio.IsChecked = true; break;
+            case WebSearchMode.Accurate:
+            case WebSearchMode.Fast:
+                WebSearchAccurateRadio.IsChecked = true;
+                break;
+            case WebSearchMode.Off:
+                WebSearchOffRadio.IsChecked = true;
+                break;
         }
         SecondarySubSwitch.IsOn = s.EnableSecondarySubtitle;
         TargetLangComboBox.SelectedItem = s.TargetLanguage;
@@ -1123,8 +1194,6 @@ public sealed partial class SettingsPage : Page
         if (!_isLoaded) return;
         if (WebSearchAccurateRadio.IsChecked == true)
             ViewModel.Settings.WebSearchMode = WebSearchMode.Accurate;
-        else if (WebSearchFastRadio.IsChecked == true)
-            ViewModel.Settings.WebSearchMode = WebSearchMode.Fast;
         else if (WebSearchOffRadio.IsChecked == true)
             ViewModel.Settings.WebSearchMode = WebSearchMode.Off;
 

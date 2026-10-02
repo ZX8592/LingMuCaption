@@ -282,7 +282,7 @@ public class FFmpegService
         AppLogService.Instance.LogInfo($"[FFmpeg] 开始压制硬字幕，编码器: {encoderDesc}，源视频码率: {sourceBitrateKbps} kbps -> 压制目标码率: {targetKbps} kbps (上限: {maxrateKbps} kbps)，视频时长: {(int)videoDuration.TotalMinutes:D2}:{videoDuration.Seconds:D2}");
         var sw = Stopwatch.StartNew();
 
-        string args = $"-y -i \"{videoPath}\" -vf \"{videoFilter}\" {encoderArgs} -c:a copy \"{outputVideoPath}\"";
+        string args = $"-y -i \"{videoPath}\" -vf \"{videoFilter}\" {encoderArgs} -c:a copy -sn \"{outputVideoPath}\"";
 
         await RunFFmpegCommandAsync(ffmpeg, args, videoDuration, progress, ct);
         sw.Stop();
@@ -324,7 +324,7 @@ public class FFmpegService
         var sw = Stopwatch.StartNew();
         AppLogService.Instance.LogInfo($"[FFmpeg] 开始封装软字幕轨 ({subtitleCodec}) 到: {Path.GetFileName(outputVideoPath)}");
 
-        string args = $"-y -i \"{videoPath}\" -i \"{subtitlePath}\" -c copy -c:s {subtitleCodec} \"{outputVideoPath}\"";
+        string args = $"-y -i \"{videoPath}\" -i \"{subtitlePath}\" -map 0:v -map 0:a? -map 1:s -c copy -c:s {subtitleCodec} -disposition:s:0 default \"{outputVideoPath}\"";
 
         await RunFFmpegCommandAsync(ffmpeg, args, TimeSpan.Zero, null, ct);
         sw.Stop();

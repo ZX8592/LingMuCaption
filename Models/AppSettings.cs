@@ -26,8 +26,8 @@ public enum SegmentationStyle
 
 public enum WebSearchMode
 {
-    Accurate, // 精确（深度检索验证专有名词与背景，准确无误 - 默认）
-    Fast,     // 快速（仅检索必要核心专有名词，减少强度与耗时）
+    Accurate, // 开启（深度检索验证专有名词与背景，准确无误 - 默认）
+    Fast,     // 兼容保留（等同于开启）
     Off       // 关闭（完全基于上下文，不进行联网搜索）
 }
 
@@ -57,6 +57,9 @@ public partial class AppSettings : ObservableObject
     private WebSearchMode _webSearchMode = WebSearchMode.Accurate;
 
     public bool EnableWebSearch => WebSearchMode != WebSearchMode.Off;
+
+    [ObservableProperty]
+    private string _selectedGlossaryCsv = string.Empty;
 
     [ObservableProperty]
     private bool _enableSecondarySubtitle = true;

@@ -17,6 +17,7 @@ public class SettingsService
 
     public SettingsService()
     {
+        GlossaryService.EnsureSampleGlossaryExists();
         _settingsFolder = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "SubtitleMaster");
