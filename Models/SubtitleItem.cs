@@ -26,6 +26,12 @@ public class SubtitleItem
     [JsonPropertyName("is_primary")]
     public bool? IsPrimary { get; set; }
 
+    [JsonPropertyName("audio_file")]
+    public string? AudioFile { get; set; }
+
+    [JsonIgnore]
+    public TimeSpan SegmentOffset { get; set; }
+
     [JsonIgnore]
     public TimeSpan StartTime { get; set; }
 

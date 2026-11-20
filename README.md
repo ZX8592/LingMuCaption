@@ -17,26 +17,27 @@
 
 **灵幕助手（LingMu Caption）** 是一款专为 Windows 平台打造的高颜值、全流程极简智能字幕处理工具。
 
-本项目深度结合 **WinUI 3** 的现代 Fluent 设计语言与 **多模态大语言模型（Gemini）** 的音频多模态理解能力，借助调用本地的ffmpeg与Antigravity CLI，能够全自动完成：
-- **音频高清提取与时基校准**
-- **上下文深度语音听辨与长短句分词**
-- **多风格双语智能翻译与专有名词网络检索核验**
-- **ASS / SRT 特效动画排版与实时预览**
-- **基于 NVIDIA NVENC 硬件加速的视频硬字幕压制**
+本项目深度结合 **WinUI 3** 的现代 Fluent 设计语言与 **多模态大语言模型（Gemini）** 的音频多模态理解能力，调用本地 FFmpeg 与 Antigravity CLI，全自动完成：
+- **音视频分段提取**：基于 Windows 原生 MediaTranscoder 的高压缩轻量音频分段提取与重叠接力
+- **上下文深度语音听辨与分句**：直接以原生音频为上下文进行逐句精听与规范断句
+- **智能双语翻译与联网检索核验**：自动识别原语种并译为地道中文，支持术语表锁定与网络检索校对专有名词
+- **本地 Silero-VAD 时间轴精修**：可选基于 ONNX Runtime + Silero-VAD 的语音起点局部精准对齐
+- **ASS / SRT 特效排版与实时预览**：支持自定义 `.ass` 样式模板与 FFmpeg/libass 原生帧预览
+- **基于 NVIDIA NVENC 硬件加速的视频压制**：支持 8-bit H.264 / 10-bit HEVC 硬件与 CPU 压制，以及无损软字幕封装
 
 ---
 
 ## 核心特性
 
 ### 1. 多模态大模型智能听辨与上下文翻译
-- **上下文感知理解**：依托大模型的多模态理解能力，直接以原生音频信息为上下文输出字幕，告别传统工具不会识别背景，断句破碎、词义脱节的问题。
-- **三档翻译风格调教**：提供「直译优先」（忠实原句结构）、「自然平衡」（准确通顺）与「意译润色」（影视台词本地化风格）。
-- **专有名词智能搜索**：内置网络检索校验机制，自动校对专业术语、品牌词、人名缩写及最新时事热词，提供“精准核查 / 快速核对 / 关闭”三档强度。
-- **语种自适应**：智能探测原音频语种，支持不同语言字幕输出。
+- **上下文感知理解**：依托 Gemini 系列大模型的多模态音频理解能力，结合前后文语境与跨分段术语传递，告别传统识别断句破碎、词义脱节的问题。
+- **三档翻译风格调教**：提供「偏直译」（忠实原句结构）、「标准平衡」（准确通顺）与「偏意译」（影视口语自然本地化）。
+- **专有名词智能检索**：内置网络检索校验机制，自动校对专业术语、品牌词、人名译名及歌词出处，支持 **开启 / 关闭** 两档控制，并支持外挂跨视频术语表（`.csv`）。
+- **本地 VAD 起点精修**：可选启用本地 Silero-VAD 模型对语音起始时间戳进行毫秒级局部校准，改善早挂漂移。
 
 ### 2. 专业级特效字幕与动画动效（ASS / SRT）
-- **双语智能排版**：支持双语模式，提供完整的特效字幕自定义支持。
-- **多格式灵活输出**：支持仅导出 `.srt` / `.ass` 字幕、外挂软字幕视频（Softsub）或硬字幕压制视频（Hardsub）。
+- **双语智能排版**：支持主/副双语字幕，内置字号、描边、投影、边缘柔化与入场动效调节，也支持加载同级目录下的自定义 `.ass` 样式模板。
+- **多格式灵活输出**：支持仅导出 `.srt` / `.ass` 字幕、封装软字幕视频（Softsub）或硬字幕压制视频（Hardsub）。
 
 ### 3. 安全沙盒与零残留清理
 - **严格工作区沙盒**：调用推理引擎时开启沙盒隔离参数，禁止任何越权访问工作区外文件的行为。
@@ -53,14 +54,17 @@
 
 ```text
 灵幕助手/
-├── 灵幕助手.exe           # 主执行文件
-├── tools/                 # 外部运行依赖统一存放
-│   ├── antigravity.exe    # 大模型推理 CLI
-│   └── ffmpeg.exe         # 音视频编解码引擎
-├── logs/                  # 运行日志归集目录
-└── app/                   # 应用程序主程序与依赖 DLL 隔离存放
+├── 灵幕助手.exe               # 主启动入口
+├── 用户术语表(模板).csv       # 跨视频专有名词术语表模板
+├── 用户字幕样式(示例).ass     # 自定义 ASS 字幕样式模板示例
+├── tools/                     # 外部运行依赖统一存放
+│   ├── antigravity.exe        # 多模态推理 CLI (>= 1.5.8，仅支持 Gemini 系列模型)
+│   └── ffmpeg.exe             # 音视频解码、VAD 解码、字幕预览与压制引擎
+├── logs/                      # 运行日志归集目录
+└── app/                       # 自包含应用程序与 .NET 8 运行时隔离存放
     ├── SubtitleMaster.exe
     ├── SubtitleMaster.dll
+    ├── Assets/silero_vad.onnx # Silero-VAD 本地起点精修模型
     └── ...
 ```
 
@@ -72,11 +76,11 @@
 - **账号要求**：使用本软件**需要您拥有具备 Antigravity CLI / Gemini 权限的个人账号**。
 - **首次授权**：首次使用前，请前往 `tools/` 文件夹双击启动 `antigravity.exe`，按照官方引导完成登录（若系统已有登录态则无需重复登录）。
 
-### 方式一：使用Releases便携包
-1. 从 Releases 下载并解压打包好的 `灵幕助手` 完整版压缩包。
-2. 在`tools/` 文件夹中找到并启动antigravity.exe，按引导完成登录。
+### 方式一：使用绿色运行包
+1. 获取打包好的 `灵幕助手` 完整运行目录（自包含构建，无需额外安装 .NET 运行时）。
+2. 在 `tools/` 文件夹中找到并启动 `antigravity.exe`，按引导完成登录。
 3. 双击根目录下的 **`灵幕助手.exe`** 即可启动。
-4. 设置所需字幕语言与样式，选择字幕规则偏好。
+4. 在设置中心配置输出模式、模型与思考强度、字幕规则及样式。
 5. 将视频文件或包含视频的文件夹拖入主界面，视频自动开始处理。
 
 ### 方式二：从源码编译构建
@@ -88,16 +92,16 @@
 
 #### 2. 克隆仓库
 ```bash
-git clone https://github.com/your-username/LingMuCaption.git
+git clone https://github.com/ZX8592/LingMuCaption.git
 cd LingMuCaption
 ```
 
 #### 3. 编译发布
-在项目根目录下（`LingMuCaption/`）运行以下命令，即可一步到位编译并输出完整的绿色发布包：
+在项目根目录下（`LingMuCaption/`）运行以下命令，即可使用 `win-x64` 自包含配置编译并输出完整 `app/` 运行目录：
 ```cmd
-dotnet publish SubtitleMaster.csproj -c Release -r win-x64 -o Publish\灵幕助手\app
+dotnet publish SubtitleMaster.csproj -c Release -p:Platform=x64 -p:PublishDir=Publish\灵幕助手\app\
 ```
-编译完成后，进入 `Publish\灵幕助手\` 即可直接运行与打包。
+编译完成后，在 `Publish\灵幕助手\tools\` 放入 `antigravity.exe`（>= 1.5.8）和 `ffmpeg.exe`，即可双击 `Publish\灵幕助手\灵幕助手.exe` 启动。
 
 ---
 
@@ -110,7 +114,7 @@ dotnet publish SubtitleMaster.csproj -c Release -r win-x64 -o Publish\灵幕助�
 
 <details>
 <summary><b>Q2: 视频压制是否支持 AMD / Intel 显卡硬件加速？</b></summary>
-当前版本优先对普及度最高、支持最稳定的 NVIDIA NVENC 进行专用底层适配。若系统中未检测到可用 NVENC，程序会自动无缝降级为画质更细腻的 CPU 多线程 libx264 编码。
+当前版本优先对普及度最高、支持最稳定的 NVIDIA NVENC（含 8-bit H.264 与 10-bit HEVC）进行专用底层适配。若系统中未检测到可用 NVENC，程序会自动无缝降级为 CPU 多线程 `libx264` / `libx265` 编码。
 </details>
 
 <details>
@@ -131,8 +135,9 @@ dotnet publish SubtitleMaster.csproj -c Release -r win-x64 -o Publish\灵幕助�
 
 | 组件名称 | 许可协议 | 作用与说明 | 官方来源 / 源码地址 |
 | :--- | :--- | :--- | :--- |
-| **FFmpeg** | LGPL v2.1+ / GPL v2+ | 高性能音视频提取、时基校准与硬字幕压制引擎 | [ffmpeg.org](https://ffmpeg.org/) |
+| **FFmpeg** | LGPL v2.1+ / GPL v2+ | 音视频解码、ASS 字幕实时预览与硬/软字幕压制引擎 | [ffmpeg.org](https://ffmpeg.org/) |
 | **Antigravity CLI** | 第三方服务条款 | 多模态大语言模型推理执行引擎 (Google LLC) | 遵循其官方服务准则与分发条款 |
+| **Silero VAD & ONNX Runtime** | MIT License | 本地语音端点检测模型与 ONNX 推理引擎，用于字幕起点精修 | [github.com/snakers4/silero-vad](https://github.com/snakers4/silero-vad) |
 | **Windows App SDK (WinUI 3)** | MIT License | 微软官方 Windows 11 现代 Fluent UI 界面系统 | [github.com/microsoft/WindowsAppSDK](https://github.com/microsoft/WindowsAppSDK) |
 | **CommunityToolkit.Mvvm** | MIT License | 高性能现代化 MVVM 架构基础库 | [github.com/CommunityToolkit/dotnet](https://github.com/CommunityToolkit/dotnet) |
 

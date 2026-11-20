@@ -31,7 +31,9 @@ public partial class VideoTaskItem : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsCompleted))]
     [NotifyPropertyChangedFor(nameof(IsFailed))]
     [NotifyPropertyChangedFor(nameof(IsCanceled))]
+    [NotifyPropertyChangedFor(nameof(IsFinished))]
     [NotifyPropertyChangedFor(nameof(CanCancel))]
+    [NotifyPropertyChangedFor(nameof(CanRetry))]
     [NotifyPropertyChangedFor(nameof(ShowElapsedTime))]
     [NotifyPropertyChangedFor(nameof(FormattedElapsedTime))]
     private VideoTaskStatus _status = VideoTaskStatus.Waiting;
@@ -76,7 +78,11 @@ public partial class VideoTaskItem : ObservableObject
 
     public bool IsCanceled => Status == VideoTaskStatus.Canceled;
 
+    public bool IsFinished => IsCompleted || IsFailed || IsCanceled;
+
     public bool CanCancel => Status == VideoTaskStatus.Waiting || IsRunning;
+
+    public bool CanRetry => IsFailed || IsCanceled;
 
     public string OpenText => LocalizationService.Instance.OpenFolderBtn;
     public string RetryText => LocalizationService.Instance.RetryBtn;

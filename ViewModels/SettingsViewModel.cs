@@ -24,6 +24,12 @@ public class AnimationOption
     public string Label { get; set; } = string.Empty;
 }
 
+public class ConcurrentTaskOption
+{
+    public int Value { get; set; }
+    public string Label { get; set; } = string.Empty;
+}
+
 public partial class SettingsViewModel : ObservableObject
 {
     [ObservableProperty]
@@ -42,32 +48,19 @@ public partial class SettingsViewModel : ObservableObject
 
     public ObservableCollection<string> AvailableBaseModels { get; } = new()
     {
-        "gemini-3.8-flash",
-        "gemini-3.7-flash",
-        "gemini-3.6-flash",
-        "gemini-3.1-pro",
-        "claude-sonnet-4-6",
-        "claude-opus-4-6",
-        "gpt-oss-120b"
+        "gemini-4-neon",
+        "gemini-4-hydrogen",
+        "gemini-4-argon",
+        "gemini-3.8-flash"
     };
 
     public List<ThinkingIntensityOption> AvailableThinkingIntensities { get; }
 
     public List<AnimationOption> AvailableAnimations { get; }
 
-    public LocalizationService Loc => LocalizationService.Instance;
+    public List<ConcurrentTaskOption> AvailableConcurrentTasks { get; }
 
-    public List<string> AvailableLanguages { get; } =
-    [
-        "zh-CN",
-        "en-US",
-        "ja-JP",
-        "ko-KR",
-        "es-ES",
-        "fr-FR",
-        "de-DE",
-        "ru-RU"
-    ];
+    public LocalizationService Loc => LocalizationService.Instance;
 
     public string SelectedBaseModel
     {
@@ -134,9 +127,27 @@ public partial class SettingsViewModel : ObservableObject
             new() { Value = AnimationPreset.KaraokeSweep, Label = Loc.AnimKaraokeSweep }
         ];
 
+        AvailableConcurrentTasks =
+        [
+            new() { Value = 1, Label = Loc.ConcurrentOption1 },
+            new() { Value = 2, Label = Loc.ConcurrentOption2 },
+            new() { Value = 3, Label = Loc.ConcurrentOption3 },
+            new() { Value = 4, Label = Loc.ConcurrentOption4 }
+        ];
+
         LoadInstalledFonts();
 
-        // Ensure current base model is in list
+        // Ensure current base model is a supported Gemini model in list
+        if (string.Equals(Settings.ThinkingIntensity, "xhigh", StringComparison.OrdinalIgnoreCase))
+        {
+            Settings.ThinkingIntensity = "high";
+            SettingsService.Instance.SaveSettings();
+        }
+        if (!CliTranscriptionService.IsSupportedGeminiModel(Settings.BaseModel))
+        {
+            Settings.BaseModel = "gemini-4-neon";
+            SettingsService.Instance.SaveSettings();
+        }
         if (!AvailableBaseModels.Contains(Settings.BaseModel))
         {
             AvailableBaseModels.Insert(0, Settings.BaseModel);
@@ -201,19 +212,47 @@ public partial class SettingsViewModel : ObservableObject
             IsCliReady = ready;
             CliStatusMessage = ready ? Loc.CliReadyText : $"{Loc.CliNotReadyText}: {msg}";
 
-            // Incorporate any extra models found by CLI without clearing or wiping user's selection
-            foreach (var m in models)
+            if (models.Count > 0)
             {
-                string baseName = m;
-                var parts = m.Split('-');
-                if (parts.Length >= 2 && (parts[^1] == "high" || parts[^1] == "medium" || parts[^1] == "low"))
+                var desiredBases = new List<string>();
+                foreach (var m in models)
                 {
-                    baseName = string.Join('-', parts.Take(parts.Length - 1));
+                    if (!CliTranscriptionService.IsSupportedGeminiModel(m))
+                    {
+                        continue;
+                    }
+
+                    string baseName = StripIntensitySuffix(m);
+                    if (!desiredBases.Contains(baseName, StringComparer.OrdinalIgnoreCase))
+                    {
+                        desiredBases.Add(baseName);
+                    }
                 }
 
-                if (!AvailableBaseModels.Contains(baseName))
+                if (desiredBases.Count > 0)
                 {
-                    AvailableBaseModels.Add(baseName);
+                    for (int i = AvailableBaseModels.Count - 1; i >= 0; i--)
+                    {
+                        if (!desiredBases.Contains(AvailableBaseModels[i], StringComparer.OrdinalIgnoreCase))
+                        {
+                            AvailableBaseModels.RemoveAt(i);
+                        }
+                    }
+
+                    for (int i = 0; i < desiredBases.Count; i++)
+                    {
+                        if (!AvailableBaseModels.Contains(desiredBases[i]))
+                        {
+                            AvailableBaseModels.Insert(Math.Min(i, AvailableBaseModels.Count), desiredBases[i]);
+                        }
+                    }
+
+                    if (!AvailableBaseModels.Contains(Settings.BaseModel))
+                    {
+                        Settings.BaseModel = desiredBases[0];
+                        OnPropertyChanged(nameof(SelectedBaseModel));
+                        SettingsService.Instance.SaveSettings();
+                    }
                 }
             }
         }
@@ -221,6 +260,18 @@ public partial class SettingsViewModel : ObservableObject
         {
             IsCheckingCli = false;
         }
+    }
+
+    private static string StripIntensitySuffix(string modelId)
+    {
+        foreach (var suffix in new[] { "-high", "-medium", "-low" })
+        {
+            if (modelId.EndsWith(suffix, StringComparison.OrdinalIgnoreCase) && modelId.Length > suffix.Length)
+            {
+                return modelId[..^suffix.Length];
+            }
+        }
+        return modelId;
     }
 
     [RelayCommand]

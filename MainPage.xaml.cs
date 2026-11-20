@@ -51,6 +51,7 @@ public sealed partial class MainPage : Page
         QueueTitleBlock.Text = loc.QueueTitle;
         EmptyQueueHintBlock.Text = loc.EmptyQueueHint;
         ClearCompletedLabel.Text = loc.ClearCompletedBtn;
+        ToolTipService.SetToolTip(ClearCompletedBtn, loc.ClearCompletedTooltip);
         SettingsLabel.Text = loc.SettingsBtn;
         UpdateDebugModeUI(SettingsService.Instance.CurrentSettings.IsDebugMode);
     }

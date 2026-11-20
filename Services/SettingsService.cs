@@ -36,30 +36,38 @@ public class SettingsService
                 var loaded = JsonSerializer.Deserialize<AppSettings>(json);
                 if (loaded != null)
                 {
+                    bool needsSave = false;
+                    if (loaded.BaseModel.EndsWith("-xhigh", StringComparison.OrdinalIgnoreCase))
+                    {
+                        loaded.BaseModel = loaded.BaseModel[..^6];
+                        loaded.ThinkingIntensity = "high";
+                        needsSave = true;
+                    }
+                    if (string.Equals(loaded.ThinkingIntensity, "xhigh", StringComparison.OrdinalIgnoreCase))
+                    {
+                        loaded.ThinkingIntensity = "high";
+                        needsSave = true;
+                    }
+                    if (!CliTranscriptionService.IsSupportedGeminiModel(loaded.BaseModel))
+                    {
+                        loaded.BaseModel = "gemini-4-neon";
+                        needsSave = true;
+                    }
+                    if (!loaded.EnableVadAlignment)
+                    {
+                        loaded.EnableVadAlignment = true;
+                        needsSave = true;
+                    }
+
+                    int clampedConcurrency = Math.Clamp(loaded.MaxConcurrentTasks, 1, 4);
+                    if (loaded.MaxConcurrentTasks != clampedConcurrency)
+                    {
+                        loaded.MaxConcurrentTasks = clampedConcurrency;
+                        needsSave = true;
+                    }
+
                     // Ensure EffectConfig exists
                     loaded.EffectConfig ??= new EffectSubtitleConfig();
-
-                    // Migrate legacy default EffectConfig values (56 / 0.65 / 12 / Bold=false) to new defaults (68 / 0.70 / 0 / Bold=true)
-                    var ec = loaded.EffectConfig;
-                    bool needsSave = false;
-                    if (ec.FontSize == 56 && Math.Abs(ec.SecondaryScale - 0.65) < 0.01 && ec.SubSpacing == 12 && !ec.Bold)
-                    {
-                        ec.FontSize = 68;
-                        ec.SecondaryScale = 0.70;
-                        ec.SubSpacing = 0;
-                        ec.Bold = true;
-                        needsSave = true;
-                    }
-
-                    if (!ec.ColorMigratedToEdeded)
-                    {
-                        if (string.Equals(ec.PrimaryColor, "#FFFFFF", StringComparison.OrdinalIgnoreCase))
-                            ec.PrimaryColor = "#EDEDED";
-                        if (string.Equals(ec.SecondaryColor, "#FFFFFF", StringComparison.OrdinalIgnoreCase))
-                            ec.SecondaryColor = "#EDEDED";
-                        ec.ColorMigratedToEdeded = true;
-                        needsSave = true;
-                    }
 
                     if (needsSave)
                     {

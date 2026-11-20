@@ -13,9 +13,6 @@
         <!-- Scrollable Settings Layout (Windows 11 Fluent) -->
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <StackPanel HorizontalAlignment="Stretch" Margin="24,6,24,36" Spacing="20">
-                <!-- Hidden placeholder for binding compatibility -->
-                <TextBlock x:Name="SettingsHeaderBlock" Visibility="Collapsed" />
-
                 <!-- SECTION 1: CLI Availability & Models -->
                 <Border CornerRadius="8"
                         Padding="20"
@@ -91,8 +88,8 @@
                         <!-- Segmentation Style -->
                         <StackPanel Spacing="8">
                             <TextBlock x:Name="SegmentationStyleLabelBlock" Text="Segmentation Style:" FontSize="13" FontWeight="Medium" />
-                            <RadioButton x:Name="SegStandardRadio" Content="Standard (Max 26 chars, autonomous segmentation - Default)" GroupName="SegStyleGroup" Checked="OnSegStyleChecked" />
-                            <RadioButton x:Name="SegShorterRadio" Content="Shorter (Max 13 chars, for short-form video &amp; large fonts)" GroupName="SegStyleGroup" Checked="OnSegStyleChecked" />
+                            <RadioButton x:Name="SegStandardRadio" Content="Standard (Max 23 CJK / 45 non-CJK chars/line - Default)" GroupName="SegStyleGroup" Checked="OnSegStyleChecked" />
+                            <RadioButton x:Name="SegShorterRadio" Content="Shorter (Max 15 CJK / 30 non-CJK chars/line, short-form/large fonts)" GroupName="SegStyleGroup" Checked="OnSegStyleChecked" />
                         </StackPanel>
 
                         <!-- Translation Style Preference -->
@@ -119,16 +116,18 @@
                                       SelectionChanged="OnGlossarySelectionChanged" />
                         </StackPanel>
 
+                        <!-- Concurrent Task Processing (Experimental) -->
+                        <StackPanel Spacing="8">
+                            <TextBlock x:Name="MaxConcurrentTasksLabelBlock" Text="同时处理文件数(实验性，可能导致跨视频术语表无法生效)：" FontSize="13" FontWeight="Medium" />
+                            <ComboBox x:Name="MaxConcurrentTasksComboBox"
+                                      MinWidth="280"
+                                      SelectionChanged="OnMaxConcurrentTasksChanged" />
+                        </StackPanel>
+
                         <!-- Secondary Subtitle (Bilingual) -->
                         <ToggleSwitch x:Name="SecondarySubSwitch"
                                       Header="Enable Secondary Subtitle (Original recognized speech as secondary line):"
                                       Toggled="OnSecondarySubToggled" />
-
-                        <!-- Target Language: Temporarily hidden as software is dedicated to Chinese translation/transcription -->
-                        <StackPanel x:Name="TargetLangPanel" Spacing="6" Visibility="Collapsed">
-                            <TextBlock x:Name="TargetLangLabelBlock" Text="Target Subtitle Language:" FontSize="13" FontWeight="Medium" />
-                            <ComboBox x:Name="TargetLangComboBox" SelectionChanged="OnTargetLangChanged" MinWidth="220" />
-                        </StackPanel>
                     </StackPanel>
                 </Border>
 
@@ -397,7 +396,7 @@
                                             CornerRadius="4"
                                             Padding="6,2"
                                             VerticalAlignment="Center">
-                                        <TextBlock x:Name="AboutVersionBlock" Text="V2.2" FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                        <TextBlock x:Name="AboutVersionBlock" Text="V3.0" FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
                                     </Border>
                                     <TextBlock x:Name="AboutAuthorBlock" Text="by 风ノ夏" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Margin="2,0,0,0" />
                                 </StackPanel>

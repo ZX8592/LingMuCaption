@@ -17,6 +17,7 @@ namespace SubtitleMaster.ViewModels;
 public partial class MainViewModel : ObservableObject
 {
     private readonly SemaphoreSlim _queueSemaphore = new(1, 1);
+    private readonly SemaphoreSlim _wakeSignal = new(0);
     private CancellationTokenSource? _queueCts;
 
     [ObservableProperty]
@@ -56,6 +57,32 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    private Task<T> RunOnUiAsync<T>(Func<T> func)
+    {
+        if (_dispatcherQueue != null && !_dispatcherQueue.HasThreadAccess)
+        {
+            var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (!_dispatcherQueue.TryEnqueue(() =>
+            {
+                try { tcs.SetResult(func()); }
+                catch (Exception ex) { tcs.SetException(ex); }
+            }))
+            {
+                try { tcs.SetResult(func()); }
+                catch (Exception ex) { tcs.SetException(ex); }
+            }
+            return tcs.Task;
+        }
+
+        return Task.FromResult(func());
+    }
+
+    public void NotifyQueueUpdated()
+    {
+        try { _wakeSignal.Release(); } catch { }
+        _ = StartQueueProcessingAsync();
+    }
+
     public MainViewModel()
     {
         Tasks.CollectionChanged += (s, e) =>
@@ -71,7 +98,7 @@ public partial class MainViewModel : ObservableObject
         {
             foreach (var t in Tasks)
             {
-                if (t.Status != VideoTaskStatus.Waiting && t.Status != VideoTaskStatus.Completed && t.Status != VideoTaskStatus.Failed)
+                if (t.IsRunning)
                 {
                     t.UpdateElapsed();
                 }
@@ -120,16 +147,27 @@ public partial class MainViewModel : ObservableObject
             }
         }
 
-        // Start processing immediately!
-        _ = StartQueueProcessingAsync();
+        // Start processing immediately (or wake running scheduler for parallel slots)
+        NotifyQueueUpdated();
     }
 
     private void AddVideoTask(string videoPath, string? importedRootDir)
     {
-        // Avoid duplicate in queue if already waiting or running
-        if (Tasks.Any(t => string.Equals(t.FilePath, videoPath, StringComparison.OrdinalIgnoreCase) && !t.IsCompleted && !t.IsFailed))
+        // Avoid duplicate only if the same file is already waiting or actively running
+        if (Tasks.Any(t => string.Equals(t.FilePath, videoPath, StringComparison.OrdinalIgnoreCase) &&
+                           (t.Status == VideoTaskStatus.Waiting || t.IsRunning)))
         {
             return;
+        }
+
+        // Remove stale failed/canceled entries for the same file so re-adding starts cleanly
+        var staleItems = Tasks
+            .Where(t => string.Equals(t.FilePath, videoPath, StringComparison.OrdinalIgnoreCase) &&
+                        (t.IsFailed || t.IsCanceled))
+            .ToList();
+        foreach (var stale in staleItems)
+        {
+            Tasks.Remove(stale);
         }
 
         var item = new VideoTaskItem(videoPath, importedRootDir)
@@ -145,26 +183,32 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     public void ClearCompleted()
     {
-        var completedList = Tasks.Where(t => t.IsCompleted).ToList();
-        foreach (var item in completedList)
+        RunOnUi(() =>
         {
-            Tasks.Remove(item);
-        }
+            var finishedList = Tasks.Where(t => t.IsFinished).ToList();
+            foreach (var item in finishedList)
+            {
+                Tasks.Remove(item);
+            }
+        });
     }
 
     [RelayCommand]
     public void RetryTask(VideoTaskItem item)
     {
-        if (item == null) return;
+        if (item == null || item.Status == VideoTaskStatus.Waiting || item.IsRunning) return;
         RunOnUi(() =>
         {
             item.Status = VideoTaskStatus.Waiting;
             item.StatusText = Loc.StatusWaiting;
             item.Progress = 0;
             item.ErrorMessage = null;
+            item.OutputPath = null;
+            item.Stopwatch.Reset();
+            item.ElapsedTimeText = "00:00";
         });
 
-        _ = StartQueueProcessingAsync();
+        NotifyQueueUpdated();
     }
 
     [RelayCommand]
@@ -174,10 +218,12 @@ public partial class MainViewModel : ObservableObject
 
         if (item.Status == VideoTaskStatus.Waiting)
         {
+            try { item.Cts?.Cancel(); } catch { }
             RunOnUi(() =>
             {
                 item.Status = VideoTaskStatus.Canceled;
                 item.StatusText = Loc.StatusCanceled;
+                item.ErrorMessage = null;
             });
             AppLogService.Instance.LogInfo($"[任务取消] 队列中等待任务已取消: {item.FileName}");
             return;
@@ -188,6 +234,7 @@ public partial class MainViewModel : ObservableObject
             try
             {
                 item.Cts?.Cancel();
+                RunOnUi(() => item.StatusText = Loc.StatusCanceling);
                 AppLogService.Instance.LogInfo($"[任务取消] 正在中止运行中的任务: {item.FileName}");
             }
             catch { }
@@ -225,27 +272,73 @@ public partial class MainViewModel : ObservableObject
     {
         if (!await _queueSemaphore.WaitAsync(0))
         {
-            // Already running
+            // Coordinator already running; signal it in case parallel slots are available
+            try { _wakeSignal.Release(); } catch { }
             return;
         }
 
         int completedCount = 0;
+        var activeWorkers = new Dictionary<Task<bool>, VideoTaskItem>();
+        var claimedTaskIds = new HashSet<Guid>();
 
         try
         {
-            IsProcessing = true;
+            RunOnUi(() => IsProcessing = true);
+            _queueCts?.Dispose();
             _queueCts = new CancellationTokenSource();
             var token = _queueCts.Token;
 
             while (true)
             {
-                var nextTask = Tasks.FirstOrDefault(t => t.Status == VideoTaskStatus.Waiting);
-                if (nextTask == null) break;
+                // Drain queued wake signals before scanning available work
+                while (_wakeSignal.Wait(0)) { }
 
-                await ProcessSingleTaskAsync(nextTask, token);
-                if (nextTask.IsCompleted)
+                int maxConcurrency = Math.Clamp(SettingsService.Instance.CurrentSettings.MaxConcurrentTasks, 1, 4);
+
+                while (activeWorkers.Count < maxConcurrency)
                 {
-                    completedCount++;
+                    var nextTask = await RunOnUiAsync(() =>
+                        Tasks.FirstOrDefault(t => t.Status == VideoTaskStatus.Waiting && !claimedTaskIds.Contains(t.Id)));
+                    if (nextTask == null) break;
+
+                    claimedTaskIds.Add(nextTask.Id);
+                    var capturedTask = nextTask;
+                    Task<bool> worker = Task.Run(() => ProcessSingleTaskAsync(capturedTask, token));
+                    activeWorkers[worker] = capturedTask;
+                }
+
+                if (activeWorkers.Count == 0)
+                {
+                    break;
+                }
+
+                // Wait until either any active worker finishes or a wake signal arrives (new file / retry / concurrency change)
+                using var wakeCts = new CancellationTokenSource();
+                var wakeTask = _wakeSignal.WaitAsync(wakeCts.Token);
+                var waitList = new List<Task>(activeWorkers.Count + 1);
+                waitList.AddRange(activeWorkers.Keys);
+                waitList.Add(wakeTask);
+
+                Task firstFinished = await Task.WhenAny(waitList);
+                if (firstFinished != wakeTask)
+                {
+                    wakeCts.Cancel();
+                    try { await wakeTask; } catch (OperationCanceledException) { }
+                }
+
+                foreach (var doneWorker in activeWorkers.Keys.Where(w => w.IsCompleted).ToList())
+                {
+                    var doneItem = activeWorkers[doneWorker];
+                    activeWorkers.Remove(doneWorker);
+                    claimedTaskIds.Remove(doneItem.Id);
+                    try
+                    {
+                        if (await doneWorker)
+                        {
+                            completedCount++;
+                        }
+                    }
+                    catch { }
                 }
             }
 
@@ -258,18 +351,27 @@ public partial class MainViewModel : ObservableObject
         }
         finally
         {
-            IsProcessing = false;
+            RunOnUi(() => IsProcessing = false);
             _queueSemaphore.Release();
+        }
+
+        // Handle edge case where a new waiting task arrived right as the coordinator was exiting
+        bool hasMoreWaiting = await RunOnUiAsync(() => Tasks.Any(t => t.Status == VideoTaskStatus.Waiting));
+        if (hasMoreWaiting)
+        {
+            _ = StartQueueProcessingAsync();
         }
     }
 
-    private async Task ProcessSingleTaskAsync(VideoTaskItem task, CancellationToken token)
+    private async Task<bool> ProcessSingleTaskAsync(VideoTaskItem task, CancellationToken token)
     {
         DateTime taskStartTimeUtc = DateTime.UtcNow;
         string? tempAudio = null;
         string? createdSrtPath = null;
         string? createdAssPath = null;
         string? createdVideoPath = null;
+        bool isCanceledOrFailed = false;
+        bool isSucceeded = false;
 
         var settings = SettingsService.Instance.CurrentSettings;
         string taskSandboxDir = Path.Combine(Path.GetTempPath(), "LingMuCaption", $"task_{Guid.NewGuid():N}");
@@ -282,6 +384,18 @@ public partial class MainViewModel : ObservableObject
         using var taskCts = CancellationTokenSource.CreateLinkedTokenSource(token);
         task.Cts = taskCts;
         var taskToken = taskCts.Token;
+
+        // Abort immediately if the user canceled the task while it was being claimed
+        bool alreadyCanceled = await RunOnUiAsync(() => task.Status == VideoTaskStatus.Canceled);
+        if (alreadyCanceled || taskToken.IsCancellationRequested)
+        {
+            task.Cts = null;
+            if (!settings.IsDebugMode && Directory.Exists(taskSandboxDir))
+            {
+                AudioExtractorService.Instance.CleanupDirectory(taskSandboxDir);
+            }
+            return false;
+        }
 
         RunOnUi(() =>
         {
@@ -316,7 +430,7 @@ public partial class MainViewModel : ObservableObject
 
             EnsureSufficientDiskSpace(task.FilePath, task.ImportedRootDirectory, taskSandboxDir, duration, settings.OutputMode);
 
-            // Step 1: Extract full unbroken audio
+            // Step 1: Extract segmented M4A audio files (15-min chunks with +10s tail overlap)
             RunOnUi(() =>
             {
                 task.Status = VideoTaskStatus.ExtractingAudio;
@@ -325,27 +439,56 @@ public partial class MainViewModel : ObservableObject
             });
 
             stageSw.Restart();
-            var extractProgress = new Progress<double>(p =>
-            {
-                RunOnUi(() => task.Progress = p * 0.10); // 0% to 10%
-            });
+            var plannedSegments = CliTranscriptionService.BuildAudioSegments(duration);
+            var extractedSegments = new List<AudioSegmentChunk>(plannedSegments.Count);
 
-            tempAudio = await AudioExtractorService.Instance.ExtractAudioAsync(
-                task.FilePath, 
-                null, 
-                null, 
-                extractProgress, 
-                taskToken,
-                outputDir: taskSandboxDir);
+            for (int segIdx = 0; segIdx < plannedSegments.Count; segIdx++)
+            {
+                var planned = plannedSegments[segIdx];
+                int capturedIdx = segIdx;
+                int totalSegCount = plannedSegments.Count;
+
+                if (totalSegCount > 1)
+                {
+                    RunOnUi(() => task.StatusText = $"{Loc.StatusExtractingAudio} ({capturedIdx + 1}/{totalSegCount})");
+                }
+
+                var extractProgress = new Progress<double>(p =>
+                {
+                    double overallPct = ((capturedIdx + Math.Clamp(p, 0.0, 100.0) / 100.0) / totalSegCount) * 10.0;
+                    RunOnUi(() => task.Progress = overallPct); // 0% to 10%
+                });
+
+                TimeSpan? trimStart = planned.ExtractStart > TimeSpan.Zero ? planned.ExtractStart : null;
+                TimeSpan? trimStop = planned.ExtractEnd > TimeSpan.Zero ? planned.ExtractEnd : null;
+                string segFileName = $"seg_{planned.Index:00}.m4a";
+
+                string segAudioPath = await AudioExtractorService.Instance.ExtractAudioAsync(
+                    task.FilePath,
+                    trimStart,
+                    trimStop,
+                    extractProgress,
+                    taskToken,
+                    outputDir: taskSandboxDir,
+                    outputFileName: segFileName);
+
+                extractedSegments.Add(planned with { FilePath = segAudioPath });
+            }
+
+            tempAudio = extractedSegments[0].FilePath;
+            long totalAudioBytes = extractedSegments.Sum(s => File.Exists(s.FilePath) ? new FileInfo(s.FilePath).Length : 0);
 
             RunOnUi(() => task.Progress = 10);
 
             stageSw.Stop();
             double extractSec = stageSw.Elapsed.TotalSeconds;
             stageTimings["1. 音频分离提取"] = extractSec;
-            AppLogService.Instance.LogStage("1. 音频分离提取", extractSec, $"Windows MediaTranscoder AAC/M4A, 临时音频: {Path.GetFileName(tempAudio)}");
+            AppLogService.Instance.LogStage(
+                "1. 音频分离提取",
+                extractSec,
+                $"Windows MediaTranscoder AAC/M4A (48kbps/单声道), 共 {extractedSegments.Count} 段 (12分钟/+10秒尾缀), 总大小: {totalAudioBytes / (1024.0 * 1024.0):F2} MiB, 首段: {Path.GetFileName(tempAudio)}");
 
-            // Step 2: Transcribe entire unbroken audio in single unified context window
+            // Step 2: Load all segments in single batch (<20MB), run Stage 1 across all audio, then transcribe per segment
             RunOnUi(() =>
             {
                 task.Status = VideoTaskStatus.Transcribing;
@@ -356,12 +499,12 @@ public partial class MainViewModel : ObservableObject
             stageSw.Restart();
             var transcriptionProgress = new Progress<double>(p =>
             {
-                RunOnUi(() => task.Progress = p); // 20% to 75%
+                RunOnUi(() => task.Progress = p); // 10% to 80%
             });
 
             string? transcriptionWarning = null;
             var rawSubtitles = await CliTranscriptionService.Instance.TranscribeAudioAsync(
-                tempAudio,
+                extractedSegments,
                 duration,
                 settings.TargetLanguage,
                 settings.ModelName,
@@ -386,7 +529,7 @@ public partial class MainViewModel : ObservableObject
             TimeSpan maxSeen = rawSubtitles.Count > 0 ? rawSubtitles.Max(s => s.EndTime) : TimeSpan.Zero;
             AppLogService.Instance.LogStage("2. AI转录与翻译", aiSec, $"模型: {settings.ModelName}, 思考强度: {settings.ThinkingIntensity}, 生成字幕: {rawSubtitles.Count} 条, 最新时间戳: {TimeHelper.FormatDuration(maxSeen)}");
 
-            // Step 3: Format & Validate
+            // Step 3: Optional Local Silero-VAD Start Alignment + Format & Validate
             RunOnUi(() =>
             {
                 task.Status = VideoTaskStatus.Formatting;
@@ -395,6 +538,29 @@ public partial class MainViewModel : ObservableObject
             });
 
             stageSw.Restart();
+
+            if (settings.EnableVadAlignment)
+            {
+                try
+                {
+                    var vadRes = await VadAlignmentService.Instance.RefineOnsetsAsync(task.FilePath, rawSubtitles, taskToken);
+                    if (vadRes != null)
+                    {
+                        AppLogService.Instance.LogInfo(
+                            $"[VAD对齐] Silero-VAD 本地起点精修完成: 耗时 {vadRes.InferenceSeconds:F2}s, 共调整 {vadRes.ModifiedCount}/{rawSubtitles.Count} 条 " +
+                            $"(延后修正早挂 {vadRes.ForwardCount} 条, 提前回调 {vadRes.BackwardCount} 条, 中位偏移 {vadRes.MedianShiftMs:+0;-0;0}ms)。");
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    AppLogService.Instance.LogInfo($"[VAD对齐] 本地精修异常，已回退保留原 AI 时间轴: {ex.Message}");
+                }
+            }
+
             var cleanSubtitles = SubtitleFormatterService.Instance.ValidateAndClean(rawSubtitles);
 
             bool isSameLanguage = SubtitleFormatterService.Instance.DetectSameLanguage(cleanSubtitles, settings.TargetLanguage);
@@ -554,6 +720,7 @@ public partial class MainViewModel : ObservableObject
             }
             AppLogService.Instance.LogTaskComplete(task.FileName, totalSec, stageTimings, isSuccess: true, outputPath: task.OutputPath);
 
+            isSucceeded = true;
             RunOnUi(() =>
             {
                 task.Stopwatch.Stop();
@@ -572,6 +739,7 @@ public partial class MainViewModel : ObservableObject
         }
         catch (OperationCanceledException)
         {
+            isCanceledOrFailed = true;
             totalSw.Stop();
             AppLogService.Instance.LogTaskComplete(task.FileName, totalSw.Elapsed.TotalSeconds, stageTimings, isSuccess: false, error: "用户取消了任务");
             RunOnUi(() =>
@@ -583,6 +751,7 @@ public partial class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
+            isCanceledOrFailed = true;
             totalSw.Stop();
             AppLogService.Instance.LogTaskComplete(task.FileName, totalSw.Elapsed.TotalSeconds, stageTimings, isSuccess: false, error: ex.Message);
             AppLogService.Instance.LogError($"[任务执行错误] {task.FileName}", ex);
@@ -602,6 +771,23 @@ public partial class MainViewModel : ObservableObject
                 task.UpdateElapsed();
             });
 
+            // Always clean up any partial output files if the task was canceled or failed (even in debug mode)
+            if (isCanceledOrFailed)
+            {
+                if (!string.IsNullOrEmpty(createdSrtPath) && File.Exists(createdSrtPath))
+                {
+                    try { File.Delete(createdSrtPath); } catch { }
+                }
+                if (!string.IsNullOrEmpty(createdAssPath) && File.Exists(createdAssPath))
+                {
+                    try { File.Delete(createdAssPath); } catch { }
+                }
+                if (!string.IsNullOrEmpty(createdVideoPath) && File.Exists(createdVideoPath))
+                {
+                    try { File.Delete(createdVideoPath); } catch { }
+                }
+            }
+
             if (settings.IsDebugMode)
             {
                 AppLogService.Instance.LogInfo($"[调试模式] 任务结束，已保留临时沙盒与音频文件: {taskSandboxDir}");
@@ -618,26 +804,11 @@ public partial class MainViewModel : ObservableObject
                 }
                 CliTranscriptionService.CleanupSessionConversations(taskSandboxDir);
 
-                // If task was canceled or failed, clean up any partial output files
-                if (task.Status == VideoTaskStatus.Canceled || task.Status == VideoTaskStatus.Failed)
-                {
-                    if (!string.IsNullOrEmpty(createdSrtPath) && File.Exists(createdSrtPath))
-                    {
-                        try { File.Delete(createdSrtPath); } catch { }
-                    }
-                    if (!string.IsNullOrEmpty(createdAssPath) && File.Exists(createdAssPath))
-                    {
-                        try { File.Delete(createdAssPath); } catch { }
-                    }
-                    if (!string.IsNullOrEmpty(createdVideoPath) && File.Exists(createdVideoPath))
-                    {
-                        try { File.Delete(createdVideoPath); } catch { }
-                    }
-                }
-
                 AppLogService.Instance.LogInfo("[清理] 已彻底清理本次任务所有临时音频、沙盒与会话缓存。");
             }
         }
+
+        return isSucceeded;
     }
 
     private static void EnsureSufficientDiskSpace(

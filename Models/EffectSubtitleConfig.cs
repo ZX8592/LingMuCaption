@@ -51,9 +51,6 @@ public partial class EffectSubtitleConfig : ObservableObject
     private double _edgeBlur = 1.0;
 
     [ObservableProperty]
-    private bool _colorMigratedToEdeded = false;
-
-    [ObservableProperty]
     private int _marginV = 45;
 
     [ObservableProperty]

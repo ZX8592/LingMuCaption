@@ -119,7 +119,7 @@ public class SubtitleFormatterService
             activeBottom = item;
         }
 
-        // Apply software-side timing padding (-100ms start, +100ms end), minimum duration extension, and non-overlap clamping independently per track
+        // Apply software-side timing padding (+300ms end), minimum duration extension, and non-overlap clamping independently per track
         var bottomTrack = valid.Where(x => !x.IsTopTrack).ToList();
         var topTrack = valid.Where(x => x.IsTopTrack).ToList();
 
@@ -357,7 +357,7 @@ public class SubtitleFormatterService
             }
             trackItems[i].StartTime = paddedStart;
 
-            var paddedEnd = trackItems[i].EndTime + TimeSpan.FromMilliseconds(100);
+            var paddedEnd = trackItems[i].EndTime + TimeSpan.FromMilliseconds(300);
             if (i < trackItems.Count - 1 && paddedEnd > trackItems[i + 1].StartTime)
             {
                 paddedEnd = trackItems[i].EndTime;

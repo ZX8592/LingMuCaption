@@ -21,10 +21,10 @@ public class LocalizationService
     public string DebugModeDisabled => IsChinese ? "调试模式已关闭：任务完成后将自动彻底清理所有临时文件" : "Debug mode disabled: temporary files will be cleaned automatically";
     public string DebugModeBadge => IsChinese ? "调试模式" : "DEBUG";
     public string DropHintTitle => IsChinese ? "拖拽视频或文件夹到此处" : "Drop videos or folders here";
-    public string DropHintSub => IsChinese ? "拖入或选择后立即开始制作，无需多余确认" : "Processing starts immediately without confirmation";
     public string ImportVideosBtn => IsChinese ? "导入视频" : "Import Videos";
     public string ImportFolderBtn => IsChinese ? "导入文件夹" : "Import Folder";
-    public string ClearCompletedBtn => IsChinese ? "清除已完成" : "Clear Completed";
+    public string ClearCompletedBtn => IsChinese ? "清理已结束" : "Clear Finished";
+    public string ClearCompletedTooltip => IsChinese ? "清除已完成、已失败和已取消的任务" : "Remove completed, failed, and canceled tasks";
     public string SettingsBtn => IsChinese ? "设置" : "Settings";
     public string QueueTitle => IsChinese ? "处理队列" : "Task Queue";
     public string EmptyQueueHint => IsChinese ? "暂无任务，请点击上方按钮或直接拖入视频" : "No active tasks. Drop files or use import buttons.";
@@ -37,7 +37,6 @@ public class LocalizationService
     public string StatusCompleted => IsChinese ? "处理完成" : "Completed";
     public string StatusFailed => IsChinese ? "处理失败" : "Failed";
 
-    public string OpenOutputFolder => IsChinese ? "打开所在目录" : "Open Folder";
     public string Retry => IsChinese ? "重试" : "Retry";
 
     // Settings
@@ -59,10 +58,6 @@ public class LocalizationService
     public string ModeSoftsub => IsChinese ? "封装软字幕视频 (无损软字幕轨封装，秒级完成，播放器可开关)" : "Softsub Video (Muxed subtitle track, instant lossless packaging)";
     public string ModeSubtitleOnly => IsChinese ? "仅生成字幕文件 (.ass / .srt)" : "Subtitle Files Only (.ass / .srt)";
 
-    public string SubtitleFormatLabel => IsChinese ? "字幕格式：" : "Subtitle Format:";
-    public string FormatAss => IsChinese ? "ASS 特效字幕 (支持样式与动效)" : "ASS Styled Subtitle (Styles & Animations)";
-    public string FormatSrt => IsChinese ? "SRT 标准字幕" : "SRT Standard Subtitle";
-
     public string TranslationStyleLabel => IsChinese ? "翻译风格偏好：" : "Translation Style:";
     public string StyleLiteral => IsChinese ? "偏直译 (忠实原句结构与精确术语)" : "Literal (Faithful to syntax & terms)";
     public string StyleBalanced => IsChinese ? "标准平衡 (兼顾准确性与自然表达)" : "Balanced (Natural & accurate)";
@@ -70,14 +65,20 @@ public class LocalizationService
 
     public string WebSearchModeLabel => IsChinese ? "联网搜索：" : "Web Search:";
     public string WebSearchAccurate => IsChinese ? "开启 (精确深度检索验证专有名词与背景 - 默认推荐)" : "On (Accurate deep verification of proper nouns & context - Default)";
-    public string WebSearchFast => WebSearchAccurate;
     public string WebSearchOff => IsChinese ? "关闭 (完全基于上下文，不进行联网搜索)" : "Off (Context-based only, no web searches)";
 
     public string GlossaryCsvLabel => IsChinese ? "跨视频术语表 (.csv，放入灵幕助手.exe同级文件夹)：" : "Cross-Video Glossary (.csv in app folder):";
     public string GlossaryNoneOption => IsChinese ? "无" : "None";
 
+    public string MaxConcurrentTasksLabel => IsChinese
+        ? "同时处理文件数(实验性，可能导致跨视频术语表无法生效)："
+        : "Concurrent Tasks (Experimental, may prevent cross-video glossary from taking effect):";
+    public string ConcurrentOption1 => IsChinese ? "1 个文件" : "1 file";
+    public string ConcurrentOption2 => IsChinese ? "2 个文件" : "2 files";
+    public string ConcurrentOption3 => IsChinese ? "3 个文件" : "3 files";
+    public string ConcurrentOption4 => IsChinese ? "4 个文件" : "4 files";
+
     public string SecondarySubtitleLabel => IsChinese ? "启用副字幕 (自动将原语言作为第二行对照)：" : "Enable Secondary Subtitle (Original recognized speech as secondary line):";
-    public string TargetLanguageLabel => IsChinese ? "字幕翻译目标语言：" : "Target Subtitle Language:";
 
     public string ThinkingIntensityLabel => IsChinese ? "思考强度 (Thinking Intensity)：" : "Thinking Intensity:";
     public string IntensityHigh => IsChinese ? "高 (深度语义分析与精细断句 - 默认推荐)" : "High (Deep semantic analysis & precise segmentation - Default)";
@@ -85,10 +86,8 @@ public class LocalizationService
     public string IntensityLow => IsChinese ? "低 (快速生成，减少思考时间)" : "Low (Fast generation, minimal thinking)";
 
     public string SegmentationStyleLabel => IsChinese ? "断句分割风格偏好：" : "Segmentation Style:";
-    public string StandardStyle => IsChinese ? "标准断句 (单行上限26字，自主规范断句 - 默认推荐)" : "Standard Segmentation (Max 26 chars/line, autonomous segmentation - Default)";
-    public string ShorterStyle => IsChinese ? "较短断句 (单行上限13字，适合短视频/大字号或快节奏屏幕)" : "Shorter Segmentation (Max 13 chars/line, suitable for large fonts/short-form)";
-    public string DenseShortStyle => StandardStyle;
-    public string SparseLongStyle => ShorterStyle;
+    public string StandardStyle => IsChinese ? "标准断句 (CJK上限23字 / 非CJK上限45字符 - 默认推荐)" : "Standard Segmentation (Max 23 CJK / 45 non-CJK chars/line - Default)";
+    public string ShorterStyle => IsChinese ? "较短断句 (CJK上限15字 / 非CJK上限30字符，适合短视频/大字号)" : "Shorter Segmentation (Max 15 CJK / 30 non-CJK chars/line, short-form/large fonts)";
     public string AboutSectionTitle => IsChinese ? "4. 关于" : "4. About";
     public string AppAboutTitle => IsChinese ? "灵幕助手" : "LingMu Caption";
     public string AppAuthor => IsChinese ? "by 风ノ夏" : "by FengNoxia";
@@ -130,5 +129,6 @@ public class LocalizationService
     public string OpenFolderBtn => IsChinese ? "打开" : "Open";
     public string RetryBtn => IsChinese ? "重试" : "Retry";
     public string CancelTaskBtn => IsChinese ? "取消" : "Cancel";
+    public string StatusCanceling => IsChinese ? "正在取消..." : "Canceling...";
     public string StatusCanceled => IsChinese ? "已取消" : "Canceled";
 }

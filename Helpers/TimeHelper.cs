@@ -10,8 +10,6 @@ public static class TimeHelper
         @"(?:(?:(?<hours>\d{1,2}):)?(?<minutes>\d{1,2}):)?(?<seconds>\d{1,2})(?:[\.,](?<millis>\d{1,3}))?",
         RegexOptions.Compiled);
 
-    public static TimeSpan ParseTime(string raw) => ParseTimestamp(raw);
-
     public static TimeSpan ParseTimestamp(string raw)
     {
         if (string.IsNullOrWhiteSpace(raw))

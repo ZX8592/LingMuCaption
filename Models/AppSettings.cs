@@ -20,14 +20,13 @@ public enum TranslationStyle
 
 public enum SegmentationStyle
 {
-    Standard, // 标准（单行最多28字，自主规范断句 - 默认推荐）
-    Shorter   // 较短（单行最多14字，防大字号字幕溢出屏幕）
+    Standard, // 标准（CJK 单行上限 23 字 / 非 CJK 45 字符，自主规范断句 - 默认推荐）
+    Shorter   // 较短（CJK 单行上限 15 字 / 非 CJK 30 字符，防大字号字幕溢出屏幕）
 }
 
 public enum WebSearchMode
 {
     Accurate, // 开启（深度检索验证专有名词与背景，准确无误 - 默认）
-    Fast,     // 兼容保留（等同于开启）
     Off       // 关闭（完全基于上下文，不进行联网搜索）
 }
 
@@ -38,7 +37,7 @@ public partial class AppSettings : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ModelName))]
-    private string _baseModel = "gemini-3.8-flash";
+    private string _baseModel = "gemini-4-neon";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ModelName))]
@@ -65,6 +64,12 @@ public partial class AppSettings : ObservableObject
     private bool _enableSecondarySubtitle = true;
 
     [ObservableProperty]
+    private bool _enableVadAlignment = true;
+
+    [ObservableProperty]
+    private int _maxConcurrentTasks = 1;
+
+    [ObservableProperty]
     private string _targetLanguage = "zh-CN";
 
     [ObservableProperty]
@@ -81,16 +86,29 @@ public partial class AppSettings : ObservableObject
             {
                 return BaseModel;
             }
-            if (BaseModel.Contains("-high") || BaseModel.Contains("-medium") || BaseModel.Contains("-low"))
+            if (BaseModel.EndsWith("-high", StringComparison.OrdinalIgnoreCase)
+                || BaseModel.EndsWith("-medium", StringComparison.OrdinalIgnoreCase)
+                || BaseModel.EndsWith("-low", StringComparison.OrdinalIgnoreCase))
             {
                 return BaseModel;
             }
-            return $"{BaseModel}-{ThinkingIntensity.ToLowerInvariant()}";
+            string baseName = BaseModel.EndsWith("-xhigh", StringComparison.OrdinalIgnoreCase)
+                ? BaseModel[..^6]
+                : BaseModel;
+            string effectiveIntensity = ThinkingIntensity.Equals("xhigh", StringComparison.OrdinalIgnoreCase)
+                ? "high"
+                : ThinkingIntensity.ToLowerInvariant();
+            return $"{baseName}-{effectiveIntensity}";
         }
         set
         {
             if (string.IsNullOrEmpty(value)) return;
-            if (value.EndsWith("-high", StringComparison.OrdinalIgnoreCase))
+            if (value.EndsWith("-xhigh", StringComparison.OrdinalIgnoreCase))
+            {
+                BaseModel = value[..^6];
+                ThinkingIntensity = "high";
+            }
+            else if (value.EndsWith("-high", StringComparison.OrdinalIgnoreCase))
             {
                 BaseModel = value[..^5];
                 ThinkingIntensity = "high";

@@ -41,7 +41,8 @@ public class AudioExtractorService
         TimeSpan? stopTime = null,
         IProgress<double>? progress = null,
         CancellationToken cancellationToken = default,
-        string? outputDir = null)
+        string? outputDir = null,
+        string? outputFileName = null)
     {
         if (!File.Exists(videoFilePath))
         {
@@ -56,7 +57,10 @@ public class AudioExtractorService
             Directory.CreateDirectory(tempFolderDir);
         }
 
-        string tempAudioPath = Path.Combine(tempFolderDir, $"audio_{Guid.NewGuid():N}.m4a");
+        string fileName = !string.IsNullOrWhiteSpace(outputFileName)
+            ? Path.GetFileName(outputFileName)
+            : $"audio_{Guid.NewGuid():N}.m4a";
+        string tempAudioPath = Path.Combine(tempFolderDir, fileName);
 
 
         try
@@ -80,13 +84,17 @@ public class AudioExtractorService
                 transcoder.TrimStopTime = stopTime.Value;
             }
 
-            // Standard AAC M4A profile (lightweight, universally compatible with Antigravity multimodal)
-            var profile = MediaEncodingProfile.CreateM4a(AudioEncodingQuality.Medium);
+            // Lightweight 48 kbps mono AAC M4A profile (~0.36 MiB/min, fits ~50+ min within 20 MB)
+            var profile = MediaEncodingProfile.CreateM4a(AudioEncodingQuality.Low);
+            profile.Audio = AudioEncodingProperties.CreateAac(44100, 1, 48000);
 
             var prepareOp = await transcoder.PrepareFileTranscodeAsync(sourceFile, destFile, profile);
             if (!prepareOp.CanTranscode)
             {
                 // Try MP3 fallback if M4A profile failed
+                try { await destFile.DeleteAsync(); } catch { }
+                tempAudioPath = Path.ChangeExtension(tempAudioPath, ".mp3");
+                destFile = await tempFolder.CreateFileAsync(Path.GetFileName(tempAudioPath), CreationCollisionOption.ReplaceExisting);
                 profile = MediaEncodingProfile.CreateMp3(AudioEncodingQuality.Medium);
                 prepareOp = await transcoder.PrepareFileTranscodeAsync(sourceFile, destFile, profile);
 

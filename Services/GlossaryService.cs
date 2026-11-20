@@ -12,6 +12,10 @@ public record GlossaryEntry(string Source, string Target, string Note);
 public static class GlossaryService
 {
     public const string SampleFileName = "用户术语表(模板).csv";
+    public const string BlankFileName = "用户术语表(空白).csv";
+    private static readonly object _csvFileLock = new();
+
+    private const string BlankCsvContent = "原文,标准中文译名,备注说明\n";
 
     private const string SampleCsvContent =
 @"原文,标准中文译名,备注说明
@@ -48,10 +52,17 @@ Winterfell,临冬城,影视与文学作品知名IP实体译名
     {
         try
         {
-            string samplePath = Path.Combine(GetBaseDirectory(), SampleFileName);
+            string baseDir = GetBaseDirectory();
+            string samplePath = Path.Combine(baseDir, SampleFileName);
             if (!File.Exists(samplePath))
             {
                 File.WriteAllText(samplePath, SampleCsvContent, new UTF8Encoding(true));
+            }
+
+            string blankPath = Path.Combine(baseDir, BlankFileName);
+            if (!File.Exists(blankPath))
+            {
+                File.WriteAllText(blankPath, BlankCsvContent, new UTF8Encoding(true));
             }
         }
         catch
@@ -91,7 +102,9 @@ Winterfell,临冬城,影视与文学作品知名IP实体译名
         }
 
         return result
-            .OrderBy(f => !string.Equals(f, SampleFileName, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(f => string.Equals(f, SampleFileName, StringComparison.OrdinalIgnoreCase) ? 0
+                         : string.Equals(f, BlankFileName, StringComparison.OrdinalIgnoreCase) ? 1
+                         : 2)
             .ThenBy(f => f, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
@@ -107,12 +120,16 @@ Winterfell,临冬城,影视与文学作品知名IP实体译名
         try
         {
             string fullPath = ResolveCsvFilePath(csvFileName);
-            if (!File.Exists(fullPath))
+            string content;
+            lock (_csvFileLock)
             {
-                return entries;
-            }
+                if (!File.Exists(fullPath))
+                {
+                    return entries;
+                }
 
-            string content = ReadCsvTextWithAutoEncoding(fullPath);
+                content = ReadCsvTextWithAutoEncoding(fullPath);
+            }
             using var reader = new StringReader(content);
             string? line;
             bool isFirstRow = true;
@@ -206,50 +223,6 @@ Winterfell,临冬城,影视与文学作品知名IP实体译名
         return s;
     }
 
-    public static void ExtractGlossaryFromOutput(string? rawOutput, Dictionary<string, string> targetMap)
-    {
-        if (string.IsNullOrWhiteSpace(rawOutput) || targetMap == null)
-            return;
-
-        using var reader = new StringReader(rawOutput);
-        string? line;
-        while ((line = reader.ReadLine()) != null)
-        {
-            string trimmed = line.Trim();
-            int idx = trimmed.IndexOf("GLOSSARY:", StringComparison.OrdinalIgnoreCase);
-            if (idx < 0) continue;
-
-            string body = trimmed[(idx + "GLOSSARY:".Length)..].Trim();
-            if (string.IsNullOrWhiteSpace(body) || string.Equals(body, "NONE", StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            var pairs = body.Split('|', StringSplitOptions.RemoveEmptyEntries);
-            foreach (var pair in pairs)
-            {
-                int eqIdx = pair.IndexOf('=');
-                if (eqIdx <= 0 || eqIdx >= pair.Length - 1) continue;
-
-                string src = NormalizeTermPunctuation(pair[..eqIdx]);
-                string tgt = pair[(eqIdx + 1)..].Trim();
-
-                // Strip trailing parenthetical notes if model echoed them in GLOSSARY
-                int parenIdx = tgt.IndexOf('(');
-                if (parenIdx > 0) tgt = tgt[..parenIdx].Trim();
-                int fullParenIdx = tgt.IndexOf('（');
-                if (fullParenIdx > 0) tgt = tgt[..fullParenIdx].Trim();
-
-                tgt = NormalizeTermPunctuation(tgt);
-
-                if (string.IsNullOrWhiteSpace(src) || string.IsNullOrWhiteSpace(tgt))
-                    continue;
-                if (string.Equals(src, "source1", StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                targetMap[src] = tgt;
-            }
-        }
-    }
-
     public static int AppendNewTermsToCsv(string? csvFileName, Dictionary<string, string> discoveredMap)
     {
         if (string.IsNullOrWhiteSpace(csvFileName) || discoveredMap == null || discoveredMap.Count == 0)
@@ -257,47 +230,50 @@ Winterfell,临冬城,影视与文学作品知名IP实体译名
 
         try
         {
-            string fullPath = ResolveCsvFilePath(csvFileName);
-            if (!File.Exists(fullPath))
-                return 0;
-
-            var existingEntries = LoadGlossary(csvFileName);
-            var existingSources = new HashSet<string>(
-                existingEntries.Select(e => e.Source),
-                StringComparer.OrdinalIgnoreCase);
-
-            var newRows = new List<string>();
-            foreach (var kvp in discoveredMap)
+            lock (_csvFileLock)
             {
-                string src = NormalizeTermPunctuation(kvp.Key);
-                string tgt = NormalizeTermPunctuation(kvp.Value);
-                if (string.IsNullOrWhiteSpace(src) || string.IsNullOrWhiteSpace(tgt))
-                    continue;
+                string fullPath = ResolveCsvFilePath(csvFileName);
+                if (!File.Exists(fullPath))
+                    return 0;
 
-                if (!existingSources.Contains(src))
+                var existingEntries = LoadGlossary(csvFileName);
+                var existingSources = new HashSet<string>(
+                    existingEntries.Select(e => e.Source),
+                    StringComparer.OrdinalIgnoreCase);
+
+                var newRows = new List<string>();
+                foreach (var kvp in discoveredMap)
                 {
-                    existingSources.Add(src);
-                    newRows.Add($"{EscapeCsvField(src)},{EscapeCsvField(tgt)},AI自动收录");
+                    string src = NormalizeTermPunctuation(kvp.Key);
+                    string tgt = NormalizeTermPunctuation(kvp.Value);
+                    if (string.IsNullOrWhiteSpace(src) || string.IsNullOrWhiteSpace(tgt))
+                        continue;
+
+                    if (!existingSources.Contains(src))
+                    {
+                        existingSources.Add(src);
+                        newRows.Add($"{EscapeCsvField(src)},{EscapeCsvField(tgt)},AI自动收录");
+                    }
                 }
+
+                if (newRows.Count == 0)
+                    return 0;
+
+                string existingText = ReadCsvTextWithAutoEncoding(fullPath);
+                var sb = new StringBuilder(existingText);
+                if (sb.Length > 0 && sb[^1] != '\n' && sb[^1] != '\r')
+                {
+                    sb.AppendLine();
+                }
+
+                foreach (var row in newRows)
+                {
+                    sb.AppendLine(row);
+                }
+
+                File.WriteAllText(fullPath, sb.ToString(), new UTF8Encoding(true));
+                return newRows.Count;
             }
-
-            if (newRows.Count == 0)
-                return 0;
-
-            string existingText = ReadCsvTextWithAutoEncoding(fullPath);
-            var sb = new StringBuilder(existingText);
-            if (sb.Length > 0 && sb[^1] != '\n' && sb[^1] != '\r')
-            {
-                sb.AppendLine();
-            }
-
-            foreach (var row in newRows)
-            {
-                sb.AppendLine(row);
-            }
-
-            File.WriteAllText(fullPath, sb.ToString(), new UTF8Encoding(true));
-            return newRows.Count;
         }
         catch (Exception ex)
         {

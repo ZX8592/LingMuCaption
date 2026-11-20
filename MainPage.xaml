@@ -47,12 +47,12 @@
                 </Border>
             </StackPanel>
 
-            <!-- Right: Action Buttons (Clear Completed & Settings) -->
+            <!-- Right: Action Buttons (Clear Finished & Settings) -->
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                <Button x:Name="ClearCompletedBtn" Click="OnClearCompletedClicked" ToolTipService.ToolTip="清除已完成任务">
+                <Button x:Name="ClearCompletedBtn" Click="OnClearCompletedClicked" ToolTipService.ToolTip="清除已完成、已失败和已取消的任务">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon Glyph="&#xE74D;" FontSize="14" />
-                        <TextBlock x:Name="ClearCompletedLabel" Text="清除已完成" />
+                        <TextBlock x:Name="ClearCompletedLabel" Text="清理已结束" />
                     </StackPanel>
                 </Button>
 
@@ -210,8 +210,8 @@
                                             </StackPanel>
                                         </Button>
 
-                                        <!-- Retry Button on Failed -->
-                                        <Button Visibility="{x:Bind IsFailed, Mode=OneWay}"
+                                        <!-- Retry Button on Failed or Canceled -->
+                                        <Button Visibility="{x:Bind CanRetry, Mode=OneWay}"
                                                 Click="OnRetryClicked"
                                                 Tag="{x:Bind}"
                                                 Style="{ThemeResource AccentButtonStyle}">

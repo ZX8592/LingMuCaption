@@ -262,25 +262,36 @@ public static class SilentProcessRunner
             }
         }, cancellationToken);
 
+        uint exitCode;
         try
         {
             await Task.WhenAll(readOutTask, readErrTask, waitExitTask);
+            GetExitCodeProcess(pi.hProcess, out exitCode);
         }
         catch (OperationCanceledException)
         {
+            // Kill the entire child process tree FIRST while the parent PID is still valid,
+            // then fall back to TerminateProcess to guarantee immediate termination.
             try
             {
-                TerminateProcess(pi.hProcess, 1);
-                var p = Process.GetProcessById(pi.dwProcessId);
+                using var p = Process.GetProcessById(pi.dwProcessId);
                 p.Kill(entireProcessTree: true);
             }
             catch { }
+
+            try
+            {
+                TerminateProcess(pi.hProcess, 1);
+            }
+            catch { }
+
             throw;
         }
-
-        GetExitCodeProcess(pi.hProcess, out uint exitCode);
-        CloseHandle(pi.hProcess);
-        CloseHandle(pi.hThread);
+        finally
+        {
+            CloseHandle(pi.hProcess);
+            CloseHandle(pi.hThread);
+        }
 
         sw.Stop();
 

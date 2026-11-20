@@ -109,7 +109,6 @@ public sealed partial class SettingsPage : Page
     private void ApplyLocalization()
     {
         var loc = LocalizationService.Instance;
-        SettingsHeaderBlock.Text = loc.SettingsTitle;
 
         CliSectionTitleBlock.Text = loc.CliSectionTitle;
         RefreshCliLabel.Text = loc.RefreshCliBtn;
@@ -137,8 +136,8 @@ public sealed partial class SettingsPage : Page
         WebSearchAccurateRadio.Content = loc.WebSearchAccurate;
         WebSearchOffRadio.Content = loc.WebSearchOff;
         GlossaryCsvLabelBlock.Text = loc.GlossaryCsvLabel;
+        MaxConcurrentTasksLabelBlock.Text = loc.MaxConcurrentTasksLabel;
         SecondarySubSwitch.Header = loc.SecondarySubtitleLabel;
-        TargetLangLabelBlock.Text = loc.TargetLanguageLabel;
 
         EffectSectionTitleBlock.Text = loc.EffectSectionTitle;
         PreviewTitleBlock.Text = loc.PreviewTitle;
@@ -182,7 +181,6 @@ public sealed partial class SettingsPage : Page
     {
         FontFamilyComboBox.ItemsSource = ViewModel.AvailableFonts;
         SecondaryFontFamilyComboBox.ItemsSource = ViewModel.AvailableFonts;
-        TargetLangComboBox.ItemsSource = ViewModel.AvailableLanguages;
 
         ModelComboBox.ItemsSource = ViewModel.AvailableBaseModels;
 
@@ -192,6 +190,10 @@ public sealed partial class SettingsPage : Page
 
         AnimationComboBox.ItemsSource = ViewModel.AvailableAnimations;
         AnimationComboBox.DisplayMemberPath = "Label";
+
+        MaxConcurrentTasksComboBox.ItemsSource = ViewModel.AvailableConcurrentTasks;
+        MaxConcurrentTasksComboBox.SelectedValuePath = "Value";
+        MaxConcurrentTasksComboBox.DisplayMemberPath = "Label";
 
         RefreshGlossaryComboBoxItems();
         RefreshCustomAssComboBoxItems();
@@ -261,6 +263,21 @@ public sealed partial class SettingsPage : Page
             ViewModel.Settings.SelectedGlossaryCsv = string.Empty;
         }
         SettingsService.Instance.SaveSettings();
+    }
+
+    private void OnMaxConcurrentTasksChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_isLoaded) return;
+        if (MaxConcurrentTasksComboBox.SelectedValue is int concurrency)
+        {
+            int clamped = Math.Clamp(concurrency, 1, 4);
+            if (ViewModel.Settings.MaxConcurrentTasks != clamped)
+            {
+                ViewModel.Settings.MaxConcurrentTasks = clamped;
+                SettingsService.Instance.SaveSettings();
+                MainViewModel.Instance.NotifyQueueUpdated();
+            }
+        }
     }
 
     private bool _isRefreshingCustomAssItems;
@@ -375,16 +392,16 @@ public sealed partial class SettingsPage : Page
 
         switch (s.WebSearchMode)
         {
-            case WebSearchMode.Accurate:
-            case WebSearchMode.Fast:
-                WebSearchAccurateRadio.IsChecked = true;
-                break;
             case WebSearchMode.Off:
                 WebSearchOffRadio.IsChecked = true;
                 break;
+            case WebSearchMode.Accurate:
+            default:
+                WebSearchAccurateRadio.IsChecked = true;
+                break;
         }
+        MaxConcurrentTasksComboBox.SelectedValue = Math.Clamp(s.MaxConcurrentTasks, 1, 4);
         SecondarySubSwitch.IsOn = s.EnableSecondarySubtitle;
-        TargetLangComboBox.SelectedItem = s.TargetLanguage;
 
         // Effect config
         var ec = s.EffectConfig;
@@ -454,6 +471,21 @@ public sealed partial class SettingsPage : Page
             ? new SolidColorBrush(ColorHelper.FromArgb(255, 16, 124, 65))
             : new SolidColorBrush(ColorHelper.FromArgb(255, 232, 17, 35));
         CliStatusMessageBlock.Text = ViewModel.CliStatusMessage;
+
+        if (ModelComboBox != null && ThinkingIntensityComboBox != null)
+        {
+            bool wasLoaded = _isLoaded;
+            _isLoaded = false;
+            try
+            {
+                ModelComboBox.SelectedItem = ViewModel.Settings.BaseModel;
+                ThinkingIntensityComboBox.SelectedValue = ViewModel.Settings.ThinkingIntensity;
+            }
+            finally
+            {
+                _isLoaded = wasLoaded;
+            }
+        }
     }
 
     private readonly List<TextBlock> _previewMainOutlines = new();
@@ -1206,16 +1238,6 @@ public sealed partial class SettingsPage : Page
         ViewModel.Settings.EnableSecondarySubtitle = SecondarySubSwitch.IsOn;
         ViewModel.SaveSettings();
         UpdatePreviewUi();
-    }
-
-    private void OnTargetLangChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (!_isLoaded) return;
-        if (TargetLangComboBox.SelectedItem is string lang)
-        {
-            ViewModel.Settings.TargetLanguage = lang;
-            ViewModel.SaveSettings();
-        }
     }
 
     private void OnFontChanged(object sender, SelectionChangedEventArgs e)
